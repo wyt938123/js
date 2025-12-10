@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>滚动定位测试</title>
+
+    <!-- 你发现给.content添加float: right后，它并没有出现在.container的右上角，反而停留在左上角，想知道这背后的原因。 -->
+     <!-- 1. 浮动元素需要 “可浮动的空间”
+float: right的作用是让元素向父容器的右侧浮动，但它的浮动是基于当前文档流的可用空间。 -->
+    <style>
+        .container {
+            width: 200px;
+            height: 300px;
+            -webkit-overflow-scrolling: touch;
+            overflow: auto;
+            position: relative;
+            border: 1px solid #000;
+            /* 方便看容器边界 */
+        }
+
+        /* 增加足够长的内容让容器可滚动 */
+        .scroll-area {
+            height: 800px;
+            /* 高度超过容s器，触发滚动 */
+        }
+
+        .content {
+            float: right;
+            left: 0;
+            top: 0;
+            width: 50%;
+            height: 100px;
+            /* 增加高度，方便观察 */
+            background-color: red;
+            opacity: 0.8;
+            z-index: 10;
+
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="content"></div>
+
+        <div class="scroll-area"></div>
+    </div>
+</body>
+
+</html>

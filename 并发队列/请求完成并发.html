@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<script>
+    const TOTLE_REQUETS = 100; // 总请求数
+    const CONCURRENT_REQUESTS = 5; // 并发请求数
+    let courrentIndex = 0; // 当前请求索引
+    const results = []; // 存储结果
+
+    // 启动并发请求
+    async function executeRequest() {
+        if (courrentIndex >= TOTLE_REQUETS) return;
+        console.log(`开始请求 ${courrentIndex}`);
+        // 模拟异步请求
+        let index = courrentIndex++;
+
+        //  try-catch不能捕获异步代码中的错误，需要在异步代码中处理
+
+        try {
+            // const result =  new Promise((resolve) => {
+
+                // setTimeout(() => {
+                //     resolve(`请求结果 ${index}`);
+                // }, Math.random() * 2000);
+
+                //
+                // const result = fetch('https://jsonplaceholder.typicode.com/todos/' + (index + 1))
+                //     .then(response => response.json())
+                //     .then(data => { resolve(data); return data; });   //修改最终成功状态，返回结果
+                //     // then(data => resolve(data));
+                    
+                const result = await fetch('https://jsonplaceholder.typicode.com/todos/' + (index + 1));
+                const data = await result.json();
+                results.push({
+                    index: index,
+                    result: data,
+                    status: 'completed'
+                });
+
+                console.log(`完成请求 ${index}`);
+
+            // })
+        } catch (error) {
+            results.push({
+                index: index,
+                result: null,
+                status: 'failed'
+            });
+            console.error(`请求 ${index} 失败:`, error);
+        }
+        finally {
+            // 继续下一个请求
+            await executeRequest();
+        }
+
+    }
+
+    function startRequests() {
+        const promises = [];
+        for (let i = 0; i < CONCURRENT_REQUESTS; i++) {
+            promises.push(executeRequest());
+        }
+        return Promise.all(promises);
+    }
+
+    startRequests().then(() => {
+        console.log('所有请求完成');
+        console.log(results);
+    })
+</script>
+
+<body>
+
+</body>
+
+</html>
