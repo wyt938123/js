@@ -6,12 +6,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Document</title>
 </head>
-<script>
+<script type="module">
+    import withTimeout from './unit/timeout-control.js';
+
+    // import withTimeout from './超时控制.js';
+
+    const timeout = 500; // 超时时间，单位毫秒
+
     const TOTLE_REQUETS = 100; // 总请求数
     const CONCURRENT_REQUESTS = 5; // 并发请求数
     let courrentIndex = 0; // 当前请求索引
     const results = []; // 存储结果
-
+    // 重命名超时控制.js -> timeout-control.js
     // 启动并发请求
     async function executeRequest() {
         if (courrentIndex >= TOTLE_REQUETS) return;
@@ -34,7 +40,8 @@
                 //     .then(data => { resolve(data); return data; });   //修改最终成功状态，返回结果
                 //     // then(data => resolve(data));
                     
-                const result = await fetch('https://jsonplaceholder.typicode.com/todos/' + (index + 1));
+                const result = await withTimeout(fetch, timeout, `请求 ${index}`, 'https://jsonplaceholder.typicode.com/todos/' + (index + 1));
+                // const result = await fetch('https://jsonplaceholder.typicode.com/todos/' + (index + 1));
                 const data = await result.json();
                 results.push({
                     index: index,
