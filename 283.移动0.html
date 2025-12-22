@@ -15,6 +15,7 @@
          * @return {void} Do not return anything, modify nums in-place instead.
          */
         nums = [0, 1, 0, 3, 12]
+        nums1 = [1,1,1,0,0,1,1,1]
         nums2 = [0]
         //乱序
         // var moveZeroes = function (nums) {
@@ -31,12 +32,43 @@
         //         }
         //         lp++;
         //     }
-        //
-        var moveZeroes = function (nums) {
+        //有点抽象，因为fast和slow指针都在前进，所以不会可能出现
+        //每次都会讲0移动到一批--是一批数字后
+        //123013041313
+        // var moveZeroes = function (nums) {
+        //     let fast = 0;
+        //     let slow = 0;
+        //         while(fast<nums.length){
+        //             if(nums[slow]){
+        //                 slow++;
+        //             }
+        //             if(nums[fast] !== 0){
+        //                 //交换
+        //                 [nums[slow],nums[fast]] = [nums[fast],nums[slow]];
+        //             }
+
+        //             fast++;
+        //         }      
             
-        };
+        //     };
+
+
+        //快指针指向数字，一起交换，后移 -----同步后移很重要
+        //很慢，交换次数过多
+        var moveZeroes = function(nums) {
+    let slowIndex = 0;
+    for (let fastIndex = 0; fastIndex < nums.length; fastIndex++) {
+        if (nums[fastIndex] !== 0) {
+            [nums[slowIndex], nums[fastIndex]] = [nums[fastIndex], nums[slowIndex]];
+            slowIndex++;
+        }
+        console.log(nums)
+    }
+};
+
         moveZeroes(nums);
-        moveZeroes(nums2);
+        console.log('---------------------------------')
+        moveZeroes(nums1);
         console.log(nums)
         console.log(nums2)
     </script>

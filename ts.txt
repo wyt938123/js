@@ -1,0 +1,49 @@
+https://juejin.cn/post/6855517117778198542
+
+协变和逆变是和赋值有关的
+
+可赋值性 assignable
+    ------ 子类型有更多的属性 、、、、使用更加具体 XXXXX
+
+
+
+
+在类型系统中，属性更多的类型是子类型--即更少的更宽泛
+「1.类
+2.函数变量，参数少跟宽泛
+」
+在集合论中，属性更少的集合是子集。 -- 即属性更多的更宽泛，区分上面
+
+而一律更具体的可以赋值给跟宽泛的  ---核心
+
+
+找到父类型子类型就可以了
+子类型才可以给父类型赋值
+
+协变--对象赋值
+逆变--函数赋值（是fna=fnb）这里不允许具体给宽泛
+
+简单说就是，具有父子关系的多个类型，在通过某种构造关系构造成的新的类型，如果还具有父子关系则是协变的，而关系逆转了（子变父，父变子）就是逆变的
+
+interface User {
+  id: number;
+  kind: string;
+};
+
+function makeCustomer<T extends User>(u: T): T {
+  // Error（TS 编译器版本：v4.4.2）
+  // Type '{ id: number; kind: string; }' is not assignable to type 'T'.
+  // '{ id: number; kind: string; }' is assignable to the constraint of type 'T', 
+  // but 'T' could be instantiated with a different subtype of constraint 'User'.
+  //{d: u.id kind: 'customer'} 更加宽泛，宽泛不能给具体的T
+  return {
+    ...u,
+    kind: 'customer'as T['kind']
+  }
+}
+
+
+https://mp.weixin.qq.com/s?__biz=MzI2MjcxNTQ0Nw==&mid=2247495521&idx=1&sn=dd26b5b4f2cd2c78dcbcc9fd15b27df7&scene=21&poc_token=HHQISWmjfe3igXLEP95oN5aWXVP3nbB45liU-P38
+
+
+https://juejin.cn/post/7095547569777934367
