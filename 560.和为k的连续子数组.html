@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+
+<body>
+    <script>
+        /**
+         * 不一定是正数
+         * 注意 单独的一个数也是子数组
+         * 滑窗应用有个前提，当窗口扩大或收缩时，窗口内元素的总和会单调增加或减少。对于只包含正数或负数的数组，这个性质是成立的，可以根据当前窗口和与目标k的大小关系来决定是扩大窗口还是收缩窗口。
+很明显本题因为-1000 <= nums[i] <= 1000的限制，会导致这个策略失效。
+ * @param {number[]} nums
+ * @param {number} k
+ * @return {number}
+ */
+
+        // nums = [1,2,3,4,2,2,1,1]
+        // result = []
+        // var subarraySum = function (nums, k) {
+        //     if(nums.length <=1 ) return 0;
+        //     let totleResult = 0;
+        //     let slow = 0;
+        //     let fast = 0;
+        //     let count = 0;
+        //     for(;fast<nums.length;fast++){
+        //         count +=nums[fast];
+        //         if(count === k&&fast - slow +1>=1){
+        //             result.push(nums.slice(slow, fast + 1));
+        //             totleResult++;
+        //         }
+        //         while(count>=k&&slow<=fast){
+        //             count -= nums[slow];
+        //             slow++;
+        //         }
+        //     }
+        // };
+        // subarraySum(nums, 6);
+        // console.log(result);
+        //前缀和解法 -- 第一位数不好表示
+        nums = [1, 2, 3, 4, 2, 2, 1, 1]
+        k = 6
+        var subarraySum = function (nums, k) {
+            let count = 0;
+            if(nums[0] === k) count++;
+            let pre = []
+            pre[0] = 0
+            for(let i=1;i<=nums.length;i++){
+                pre[i] = (pre[i-1] || 0) + nums[i];
+            }
+
+            let slow = 0;
+            let fast = 1;
+            for(;fast<=nums.length;fast++){
+                if(pre[fast]-pre[slow] === k){
+                    count++;
+                }
+                if(pre[fast]-pre[slow]>k){
+                    slow++;
+                }
+            }
+            return count;
+        }
+        console.log(subarraySum(nums, k));  
+    </script>
+</body>
+
+</html>
