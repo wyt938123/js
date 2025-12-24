@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+
+<body>
+    <script>
+        
+
+ function ListNode(val) {
+     this.val = val;
+     this.next = null;
+ }
+
+const headA = new ListNode(4);
+headA.next = new ListNode(1);
+headA.next.next = new ListNode(8);
+headA.next.next.next = new ListNode(4);
+headA.next.next.next.next = new ListNode(5);
+const headB = new ListNode(5);
+headB.next = new ListNode(0);
+headB.next.next = new ListNode(1);
+headB.next.next.next = headA.next.next; // 这里让两个链表相交于节点值为 8 的节点
+
+        /**
+         * @param {ListNode} headA
+         * @param {ListNode} headB
+         * @return {ListNode}
+         */
+        var getIntersectionNode = function (headA, headB) {
+            while(headA.val === headB.val){
+                if(headA.next === null|| headB.next === null) 
+                return headA.val;
+                headA = headA.next;
+                headB = headB.next;
+            }
+            return null;
+        };
+        console.log(getIntersectionNode(headA, headB));
+
+
+        //百度一面，先让写这无环链表的相交，然后让口头回答：如果其中一个链表有环该如何判断，我说可以先用哈希表存放链表a，然后遍历链表b查看当前节点是否在哈希表中，面试官又问如何使用空间复杂度O(1)的方法，想不出来 gg
+    </script>
+</body>
+
+</html>

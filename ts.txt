@@ -1,5 +1,7 @@
 https://juejin.cn/post/6855517117778198542
 
+下面有重要总结
+
 协变和逆变是和赋值有关的
 
 可赋值性 assignable
@@ -47,3 +49,40 @@ https://mp.weixin.qq.com/s?__biz=MzI2MjcxNTQ0Nw==&mid=2247495521&idx=1&sn=dd26b5
 
 
 https://juejin.cn/post/7095547569777934367
+
+
+
+K extends keyof T
+K extends ...
+泛型约束：限制传入的泛型参数 K 必须是 keyof T 的子类型（即 K 只能是 keyof T 中的一个 / 多个属性名，不能是其他值）。
+子类型：对于keyof得到的联合类型 a|b|c  a...属于子类型（集合论）
+           T extends string | number  那么T只能是string或者是numner
+
+对于 T extends User 那么必须要多于user的属性才能是子属性 - 类型系统
+function makeCustomer<T extends User>(u: T): T {
+  // 解构 u 保留所有 T 类型的属性，仅覆盖 kind
+  return {
+    ...u, // 关键：继承原对象的所有属性（包括 T 扩展的属性）
+    kind: 'customer'
+  };
+}
+
+ts重要内置工具类型还有哪些呢
+
+
+
+
+
+type[keyof T] 并不是 “展开 type 类型本身”，而是提取 type 这个对象类型的所有属性值类型，并合并为一个联合类型（可以理解为 “把对象类型的「值」展开成联合类型”）。
+
+// 原对象类型
+type User = {
+  id: number;
+  name: string;
+  isAdmin: boolean;
+};
+
+// 步骤1：keyof User → "id" | "name" | "isAdmin"（属性名联合类型）
+// 步骤2：User[keyof User] → User["id"] | User["name"] | User["isAdmin"]
+// 步骤3：合并结果 → number | string | boolean
+type UserValueTypes = User[keyof User]; 
