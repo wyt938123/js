@@ -21,21 +21,30 @@ headA.next = new ListNode(1);
 headA.next.next = new ListNode(8);
 headA.next.next.next = new ListNode(4);
 headA.next.next.next.next = new ListNode(5);
-const headB = new ListNode(5);
-headB.next = new ListNode(0);
-headB.next.next = new ListNode(1);
+const headB = new ListNode(8);
+headB.next = new ListNode(4);
+headB.next.next = new ListNode(5);
 headB.next.next.next = headA.next.next; // 这里让两个链表相交于节点值为 8 的节点
 
         /**
+         * 如何表示顺序 -- 
+         * 相交后不会再分叉了，并且相交后的节点是完全相同的节点引用
+         * 不要被值误导了
          * @param {ListNode} headA
          * @param {ListNode} headB
          * @return {ListNode}
          */
         var getIntersectionNode = function (headA, headB) {
-            while(headA.val === headB.val){
-                if(headA.next === null|| headB.next === null) 
-                return headA.val;
+            if (!headA || !headB) return null;
+            const map = new Map();
+            while(headA){
+                map.set(headA, true);
                 headA = headA.next;
+            }
+            while(headB){
+                if(map.has(headB)){
+                    return headB;
+                }
                 headB = headB.next;
             }
             return null;

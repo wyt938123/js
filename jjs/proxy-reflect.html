@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+
+<body>
+    <script>
+        //被动的 ，并且操作的事proxy对象，而不是原对象
+        //obj的this指向proxy对象
+        const proxyneme = new Proxy({}, {
+            get(target, prop, server) {
+                console.log(`Getting property ${prop}`, '我是实例对象：', server);
+                //默认undefined，需要返回值
+                return target[prop];
+            },
+            set(target, prop, value) {
+                console.log(`Setting property ${prop} to ${value}`);
+                target[prop] = value;
+                return true;
+            }
+        });
+        console.log('proxyneme:', proxyneme.a);
+        console.log('proxyneme:', proxyneme);
+        console.log('-------------------');
+
+        const obj = { name: 'zhangsan' };
+        Reflect.set(obj, 'age', 20);
+        console.log('obj:', obj);
+        console.log('obj has name:', Reflect.has(obj, 'name'));
+        console.log("内置对象", Reflect)
+        console.log("构造函数", Proxy)
+
+        const proxyArr = new Proxy(obj, {
+            get(target, prop, receiver) {
+                console.log(`Getting property ${prop}`);
+                return target[prop];
+            },
+            set(target, prop, value, receiver) {
+                console.log(`Setting property ${prop} to ${value}`);
+                return Reflect.set(target, prop, value, receiver);
+            }
+        });
+
+        console.log('proxyArr name:', proxyArr.name); // Getting property name
+        console.log('-------------------');
+
+        //https://juejin.cn/post/7080916820353351688?searchId=20251229102058C2AFFAFCA5F55F4C4B27
+        // /当然，你不要将 revceiver 和 get 陷阱中的 this 弄混了，陷阱中的 this 关键字表示的是代理的 handler 对象。
+        {
+            const parent = {
+                name: '19Qingfeng',
+                get value() {
+                    return this.name;
+                },
+            };
+
+            const handler = {
+                get(target, key, receiver) {
+                    //  return Reflect.get(target, key);
+                    return Reflect.get(target, key, receiver);  //，修改targetthis指向第三个参数
+                    //receiver 指向 proxy 对象,更先指向继承proxy的obj对象
+                },
+            };
+
+            const proxy = new Proxy(parent, handler);
+
+            const obj = {
+                name: 'wang.haoyu',
+            };
+
+            // 设置obj继承与parent的代理对象proxy
+            Object.setPrototypeOf(obj, proxy);
+
+            // log: wang.haoyu
+            console.log(obj.value);
+        }
+        // 相信看到这里大家都已经明白了，为什么Proxy一定要配合Reflect使用。恰恰是为什么触发代理对象的劫持时保证正确的 this 上下文指向。
+        //Proxy 中接受的 Receiver 形参表示代理对象本身或者继承与代理对象的对象。
+        // Reflect 中传递的 Receiver 实参表示修改执行原始操作时的 this 指向
+    </script>
+</body>
+
+</html>

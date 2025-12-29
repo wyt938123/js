@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+
+<body>
+
+    <script>
+        //小红书一面，要求只反转一半链表
+        //2025 7.11小红书实习java搜索引擎方向一面
+// 需要自己构建输入输出，写完迭代之后要求用递归写一遍
+//0415 百度二面
+        function ListNode(val, next) {
+            this.val = (val === undefined ? 0 : val)
+            this.next = (next === undefined ? null : next)
+        }
+        /**
+         * @param {ListNode} head
+         * @return {ListNode}
+         */
+        var reverseList = function (head) {
+            if(!head) return null;
+            let current = head;
+            let prev = null;
+            while(current){
+                const temp = current.next;
+                current.next = prev;
+                prev = current;
+                current = temp;
+            }
+            return prev;
+        };
+    </script>
+
+
+</body>
+
+</html>

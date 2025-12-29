@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+  <script>
+    window.Global = window.Global || {};
+  </script>  
+  <script src="https://cdn.jsdelivr.net/npm/js-md5@0.7.3/md5.min.js"></script>
+  <script>
+    window.Global.md5 = window.Global.md5 || md5;
+  </script>
+<body>
+    <script type="module">
+      
+      import * as Util from './Util.js';
+
+        if (!String.prototype.padStart) {
+            String.prototype.padStart = function padStart(targetLength, padString) {
+                targetLength = targetLength >> 0; // 转换为整数
+                padString = String(typeof padString !== 'undefined' ? padString : ' ');
+                if (this.length >= targetLength) {
+                    return String(this);
+                }
+                targetLength = targetLength - this.length;
+                if (targetLength > padString.length) {
+                    padString += padString.repeat(targetLength / padString.length); // 重复字符串直到长度足够
+                }
+                return padString.slice(0, targetLength) + String(this);
+            };
+        }
+
+        console.log('5'.padStart(2, '0')); // "05"
+        console.log('hello'.padStart(10,'a8')); // "     hello"
+
+
+          window.setGlobalData = (nextState) => {
+      Object.assign(window.Global, nextState);
+    };
+
+
+    ['AddayExposures', 'AddayCompletedPlays', 'AddayClicks', 'ADdayrequest'].forEach((el) => {
+        let storeVal = localStorage.getItem(el);
+        let now = Util.getFormatDate();
+        if (storeVal) {
+          let arr = storeVal.split(",");
+          if (arr[0] != now) {
+            localStorage.setItem(el, `${now},0`);
+          }
+        } else {
+          localStorage.setItem(el, `${now},0`);
+        }
+      });
+
+
+  function getIp() {
+    return new Promise((resolve, reject) => {
+      const xts = Math.round(Date.now() / 1000);
+      //这里的request是自己封装的一个网络请求类
+      let xhr = new Request({
+        baseURL: "https://getip.muchcloud.com",
+        header: {
+          Xts: xts,
+          Xsign: window.Global.md5("/yunyousj@2021" + xts),
+          "Content-Type": "application/json",
+        },
+      });
+      xhr
+        .request({
+          uri: "/",
+          method: "get",
+          data: "",
+          noReportResTime: true,
+          isAbort: true,
+        })
+        .then((res) => {
+          console.log("[getIp]", JSON.stringify(res));
+          resolve(JSON.parse(res));
+          xhr = null;
+        })
+        .catch((err) => {
+          console.log("[getIp][error]", JSON.stringify(err));
+          resolve(null);
+          xhr = null;
+        });
+    });
+  }
+  function getHapKeysValue(value) {
+  try {
+    if (Object.prototype.toString.call(value) == "[object Array]") {
+      console.log("value is array");
+      return value[0].replace(/^['"]/, "").replace(/['"]$/, "");
+    } else if (value.includes("[")) {
+      let resultVal = value.split(",")[0];
+      return resultVal
+        .replace("[", "")
+        .replace(/^['"]/, "")
+        .replace(/['"]$/, "");
+    } else {
+      return value.replace(/^['"]/, "").replace(/['"]$/, "");
+    }
+  } catch (err) {
+    return value;
+  }
+}
+
+console.log("hapKeysValue:", getHapKeysValue(['testvalue'])); // testvalue
+console.log("hapKeysValue:", getHapKeysValue(`[testvalue,othervalue]`)); // testvalue
+console.log("hapKeysValue:", getHapKeysValue(`testvalue`)); // testvalue
+
+
+  // const result = getIp();
+    </script>
+</body>
+
+</html>

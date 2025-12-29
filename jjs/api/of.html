@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+
+<body>
+    <script>
+        //灵活  ，可以利用任何构造函数来创建类似数组的对象 
+         
+        // 构造函数：你定义的基础版本（只打印，不处理属性）
+        function NotArray(len) {
+            console.log("NotArray called with length", len);
+        }
+
+        // 模拟 Array.of 的内部逻辑（关键：帮你处理参数并挂载到实例）
+        Array.of = function (...args) {
+            // 1. this 指向 NotArray（因为 call 绑定）
+            // 2. new this(...args) → new NotArray(1,2,3)
+            const instance = new this(...args);
+            // 3. Array.of 内部帮你遍历参数，挂载 0/1/2 索引到实例
+            args.forEach((val, idx) => {
+                instance[idx] = val;
+            });
+            // 4. 挂载 length 属性
+            instance.length = args.length;
+            return instance;
+        };
+
+        // 执行 Array.of.call(NotArray, 1,2,3)
+        const result = Array.of.call(NotArray, 1, 2, 3);
+        console.log(result);
+        // 输出：
+        // NotArray called with length 1（构造函数只接收第一个参数 1）
+        // NotArray { '0': 1, '1': 2, '2': 3, length: 3 }
+    </script>
+</body>
+
+</html>

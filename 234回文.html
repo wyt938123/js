@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<body>
+    <script>
+        /**
+         * @param {number[]} nums
+         *  
+         *  
+        **/
+        function node(val){
+            this.val = val;
+            this.next = null;
+        }
+        arr = [1,2,3,4,5,4,3,2,1]
+        function createList(arr){
+            let head = new node(arr[0]);
+            let current = head;
+            for(let i=1;i<arr.length;i++){
+                current.next = new node(arr[i]);
+                current = current.next;
+            }
+            return head;
+        }
+        let head = createList(arr);
+        
+        function reserveList(head){
+            let slow = head;
+            let fast = head;
+            let prev = null;
+            while(fast && fast.next){
+                fast = fast.next.next;
+                let temp = slow.next;
+                slow.next = prev;
+                prev = slow;
+                slow = temp;
+            }
+            while(slow && prev){
+                if(slow.val !== prev.val){
+                    return false;
+                }
+                console.log(slow.val,prev.val);
+                slow = slow.next;
+                prev = prev.next;
+            }
+            return true;
+        }
+        console.log(reserveList(head));
+    </script>
+</body>
+</html>

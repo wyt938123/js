@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+
+<body>
+    <script>
+        // 串行
+ function serialLoad(arr) {
+            // console.log('[serialLoad]')
+            let o = { timeoutHaveAd: false };
+            return new Promise(async (resolve, reject) => {
+                for await (const i of arr) {
+                    if (!i) break;
+                    let fun = "loadRewardedVideoAd";
+                    let res = await this[fun](i, o, this.nowLoadModeCount).catch((err) => {
+                        // console.log('[serialLoad][err],', JSON.stringify(err));
+                    });
+                    // 判断数量达到缓存池上限或者有广告或者超时有广告
+                    let adNums1 = +(window.Global.adSpeciality?.ADnumbers || 0);
+                    if (
+                        res ||
+                        o.timeoutHaveAd ||
+                        (this.adRVCacheList.length >= adNums1 && adNums1 > 0) ||
+                        (this.adRVCacheList.length == 1 &&
+                            adNums1 == 0 &&
+                            window.Global.referer == "ym01")
+                    ) {
+                        break;
+                    }
+                }
+                resolve(true);
+            });
+        }
+
+  // 并行
+ function parallelLoad() {
+            // console.log('[parallelLoad][start]')
+            // 过滤已缓存的广告位id
+            let adQueue = this.storeyData.map((el) => {
+                let queue = [];
+                el.platform_list.forEach((ele) => {
+                    let arr = ele.adid_list.filter(
+                        (elem) => !this.adUnitIdLockList.has(elem.adUnitId)
+                    );
+                    arr.sort(() => Math.random() - 0.5);
+                    queue = queue.concat(arr.slice(0, ele.rand_num));
+                });
+                return queue;
+            });
+            // 对应缓存池达到上限过滤对应广告请求
+            let adNums1 = +(window.Global.adSpeciality?.ADnumbers || 0);
+            if (this.adRVCacheList.length >= adNums1 && adNums1 > 0) {
+                adQueue = []
+            }
+            // console.log('[parallelLoad][adQueue]', adQueue)
+            return new Promise((resolve, reject) => {
+                Promise.all(adQueue.map((el) => this.serialLoad(el)))
+                    .then((res) => {
+                        resolve(true);
+                    })
+                    .catch((err) => {
+                        reject(err);
+                    });
+            });
+        }
+    </script>
+</body>
+
+</html>
