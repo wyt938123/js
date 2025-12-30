@@ -1,0 +1,112 @@
+<!-- <!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+
+<body>
+    <script>
+        let a = [1, 2, 3]
+        function test(arr) {
+            // let arr2 = arr
+            let arr2 = [1]
+            arr2.push(4)
+            arr2.push(5)
+            arr = arr2
+            // return arr
+        }
+        // console.log(  test(a))
+        test(a)
+        console.log(a)
+        /**
+         * 
+         * 代码逐行拆解与核心原理分析
+先给出结论：最终console.log(a)输出[1,2,3]，核心原因是函数参数的赋值仅修改局部变量指向，不会改变原变量的内存引用。
+下面逐行拆解代码逻辑，并解释背后的 JS 基础原理：
+1. 全局变量初始化
+javascript
+运行
+let a = [1,2,3]
+JS 中数组是引用类型，变量a本身不存储数组值，而是存储一个「内存地址」（比如0x123），这个地址指向堆内存中实际的数组[1,2,3]。
+示意图：a → 0x123 → [1,2,3]
+2. 函数定义：function test(arr)
+javascript
+运行
+function test(arr){
+    // let arr2 = arr
+    let arr2 = [1]
+    arr2.push(4)
+    arr2.push(5)
+    arr = arr2
+    // return arr
+}
+函数执行时的核心逻辑分 4 步，结合「引用类型 + 函数参数传递规则」分析：
+步骤 1：函数调用时的参数传递
+执行test(a)时，JS 会把全局变量a的「内存地址值」（0x123）复制一份，赋值给函数的局部参数arr。
+此时：a → 0x123 → [1,2,3]，arr → 0x123 → [1,2,3]
+关键：arr是函数内部的局部变量，和全局a只是「指向同一个内存地址」，但变量本身相互独立。
+步骤 2：创建局部数组arr2
+javascript
+运行
+let arr2 = [1]
+新建一个数组[1]，分配新的内存地址（比如0x456），局部变量arr2指向这个地址。
+此时：arr2 → 0x456 → [1]
+步骤 3：修改arr2指向的数组
+javascript
+运行
+arr2.push(4)
+arr2.push(5)
+push是直接修改数组本身（堆内存中的值），而非修改变量arr2的指向。
+执行后：arr2 → 0x456 → [1,4,5]
+步骤 4：修改局部变量arr的指向
+javascript
+运行
+arr = arr2
+这一步是把arr2的内存地址（0x456）赋值给局部变量arr，相当于让arr不再指向原地址0x123，而是指向0x456。
+此时函数内部：arr → 0x456 → [1,4,5]，但全局变量a的指向完全没变化（依然是0x123 → [1,2,3]）。
+3. 函数执行完毕 & 打印全局变量a
+javascript
+运行
+test(a)
+console.log(a) // 输出 [1,2,3]
+函数执行完毕后，内部的局部变量arr、arr2会被销毁，但堆内存中的两个数组（[1,2,3]和[1,4,5]）不受影响。
+全局变量a自始至终没有被修改过指向，因此打印的还是最初的[1,2,3]。
+关键易错点对比（帮你彻底理解）
+如果把代码改成下面两种情况，结果会不同，对比理解：
+情况 1：直接修改参数指向的数组（而非修改参数指向）
+javascript
+运行
+let a = [1,2,3]
+function test(arr){
+    arr.push(4) // 直接修改arr指向的数组（和a同地址）
+}
+test(a)
+console.log(a) // 输出 [1,2,3,4]
+原因：arr.push修改的是「内存地址指向的数组内容」，而非修改arr变量本身的指向，因此a指向的数组也会被修改。
+情况 2：把 arr2 赋值给全局变量 a
+javascript
+运行
+let a = [1,2,3]
+function test(arr){
+    let arr2 = [1,4,5]
+    a = arr2 // 直接修改全局变量a的指向
+}
+test(a)
+console.log(a) // 输出 [1,4,5]
+原因：直接操作全局变量a，改变了它的内存指向，因此打印结果变化。
+核心总结
+JS 引用类型的变量：存储的是「内存地址」，而非值本身；
+函数参数传递：引用类型参数会「复制地址」给局部参数，局部参数和原变量指向同一个对象，但变量本身独立；
+关键区别：
+修改「参数指向的对象内容」（如arr.push）：会影响原变量；
+修改「参数本身的指向」（如arr = arr2）：仅修改局部变量，和原变量无关。
+你的代码中属于第二种情况（修改参数本身的指向），因此全局变量a完全不受影响，最终输出[1,2,3]。
+         * /
+        
+    </script>
+</body>
+
+</html> -->

@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+
+<body>
+    <script>
+
+        function TreeNode(val, left, right) {
+            this.val = (val === undefined ? 0 : val)
+            this.left = (left === undefined ? null : left)
+            this.right = (right === undefined ? null : right)
+        }
+
+        // var inorderTraversal = function (root) {
+        //     // console.log(root.val);
+        //     // if (root.left) inorderTraversal(root.left);
+        //     // if (root.right) inorderTraversal(root.right);
+        //     function createTree(root){
+        //         if(!root) return;
+        //         const node = new TreeNode(root.values[0], createTree(root.left,values.splice(0,1)),createTree(root.right,values.splice(0,1)));
+               
+        //         console.log(root.val);
+                
+        //     }
+        //     createTree(root,root);
+        //     for(let i = 0;i<root.length;i++){
+                
+        //     }
+        // };
+        var inorderTraversal = function (root) {
+            let res = [];
+            function travelTree(root){
+                if(!root) return;
+                travelTree(root.left);
+                res.push(root.val);
+                travelTree(root.right);
+            }
+        }
+        inorderTraversal([1,null,2,3]);
+    </script>
+</body>
+
+</html>

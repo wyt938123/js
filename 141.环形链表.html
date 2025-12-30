@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=, initial-scale=1.0">
+    <title>Document</title>
+</head>
+
+<body>
+    <script>
+        //差解
+
+        function createList(arr) {
+            let head = new node(arr[0]);
+            let current = head;
+            for (let i = 1; i < arr.length; i++) {
+                current.next = new node(arr[i]);
+                current = current.next;
+            }
+            return head;
+        }
+
+        function node(val) {
+            this.val = val;
+            this.next = null;
+        }
+        
+        var hasCycle = function (head) {
+            if(!head) return false;
+            let map = new Map();
+            while(head){
+                if(map.has(head)){
+                    return true;
+                }
+                map.set(head, true);
+                head = head.next;
+            }
+            return false;
+        };
+        
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+
+<body>
+    <script>
+        var reg = /./;
+        var str = '\n\r ';
+        console.log(reg.test(str)); //true
+
+        var str = '\n\r';
+        console.log(reg.test(str)); //false
+
+        console.log('-------------------验证是否为11位有效手机号码-------------------');
+        {
+            let reg = /^[1][34578]\d{9}$/
+            let str1 = '13812345678';
+            let str2 = '23812345678';
+            console.log(reg.test(str1)); //true
+            console.log(reg.test(str2)); //false
+        }
+        console.log("-------------------密码验证-------------------")
+
+        {
+            //断言写在字符串开头（最常见，如 ^(?=.*[A-Z])）
+            //(?=...)  先行断言，表示括号内的规则必须满足，但不消耗字符
+            //字符串满足后面有任何字符并且包含大写字母
+            //从 位置0 往后看，.* 匹配任意字符（先匹配空、或 A、或 Ab、或 Abc）
+            //区分AB(?=.*[A-Z])  //AB后面有大写字母
+            var reg = /(?=.*[A-Z])(?=.*[a-z])(?=.*\d)(?=.*[!@#%&])^[A-Za-z\d!@#%&]{6,}$/;
+            var str = 'A1!13a';
+            console.log(reg.test(str)); //true
+
+        }
+        {
+            console.log('-------------------验证是否为邮箱-------------------');
+            const emailRegStandard = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
+        } 
+        {
+            //https://juejin.cn/post/6844903845227659271?searchId=20251230110641F9A1170B9A25E2EDF47E#heading-9
+            //后面的内容进阶
+        }
+        {
+            //捕获单个数字（目标匹配项）,然后逐个匹配断言
+            //区分^$ --强制整个字符串作为开始和结尾
+            //  和 普通的   有g
+            //(?=) 和 (?:) 不消耗字符
+            let str = "123456789.123456"
+            // let reg = /(\d)(?=(\d{3})+(?:[\.]\d*))?$/g
+            // let reg = /(\d)(?=(\d{3})+(.\)$))/g;
+            let reg = /\d(?=(\d{3})+(\.))/g;
+            let reg1 = /\d(?=(\d{3})+(\.|$))/g;
+            // let newStr = str.replace(reg, '$1,');
+            let newStr = str.replace(reg, '$&,');
+            console.log(newStr);
+        } 
+    </script>
+</body>
+
+</html>

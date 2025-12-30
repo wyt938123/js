@@ -86,3 +86,12 @@ type User = {
 // 步骤2：User[keyof User] → User["id"] | User["name"] | User["isAdmin"]
 // 步骤3：合并结果 → number | string | boolean
 type UserValueTypes = User[keyof User]; 
+
+
+
+
+
+
+
+
+

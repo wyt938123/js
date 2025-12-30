@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+
+<body>
+    <script>
+        function createList(arr) {
+            let head = new node(arr[0]);
+            let current = head;
+            for (let i = 1; i < arr.length; i++) {
+                current.next = new node(arr[i]);
+                current = current.next;
+            }
+            return head;
+        }
+
+        function node(val) {
+            this.val = val;
+            this.next = null;
+        }
+       
+        const a1 = [1, 2, 4];
+        const a2 = [1, 3, 4];
+        let list1 = createList(a1);
+        let list2 = createList(a2);
+
+        //最方便的就是创建一个新的节点-合并两个链表
+
+
+
+        // var mergeTwoLists = function (list1, list2) {
+        //     let l1 = list1;
+        //     let l2 = list2;
+        //     if(!list1) return list2;
+        //     if(!list2) return list1;
+        //     //谁头节点小谁就是头节点
+        //     function swap(list1,list2){
+        //             let t1 = list1.next;
+        //             let t2 = list2.next;
+        //             list1.next = list2;
+        //             list2.next = t1;
+        //             //这两步是操作形参
+        //             //去test理解一下
+        //             list1 = t1;
+        //             list2 = t2;
+        //             return [list1,list2];
+        //             // console.log(list1.val, list2.val);
+        //     }
+        //     let sign = 0; //0表示list1头节点小，1表示list2头节点小,head已经交换过了
+        //     while(list1 && list2){
+        //         if(list1.val==list2.val){
+        //           let [list]  swap(list1,list2);
+                    
+        //         }
+        //         else if(list1.val < list2.val){
+        //             sign = 0;
+        //             swap(list1,list2);
+        //             list1 = list1.next;
+        //             list2 = list2.next;
+        //         }
+        //         else{
+        //             sign = 1;
+        //             swap(list2,list1);
+        //             list1 = list1.next;
+        //             list2 = list2.next;
+        //         }
+        //     }
+        //     if(sign ==0){
+        //         list1.next = list2;
+        //         return li1;
+        //     }
+        //     else{
+        //         list2.next = list1;
+        //         return li2;
+        //     }
+        // };
+        // let mergedList = mergeTwoLists(list1, list2);
+        // // while (mergedList) {
+        // //     console.log(mergedList.val);
+        // //     mergedList = mergedList.next;
+        // // }
+    </script>
+</body>
+
+</html>

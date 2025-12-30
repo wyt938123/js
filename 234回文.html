@@ -1,10 +1,12 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Document</title>
 </head>
+
 <body>
     <script>
         /**
@@ -12,38 +14,46 @@
          *  
          *  
         **/
-        function node(val){
+        function node(val) {
             this.val = val;
             this.next = null;
         }
-        arr = [1,2,3,4,5,4,3,2,1]
-        function createList(arr){
+        //需要一个变量来判断奇数偶数
+        //傻福，通过fast是否为null就能判断奇偶数，用121 1221简单模拟即可
+        arr = [1, 2, 3, 4, 5, 5,4, 3, 2, 1]
+        arr = [1, 2, 3, 2, 1]
+        function createList(arr) {
             let head = new node(arr[0]);
             let current = head;
-            for(let i=1;i<arr.length;i++){
+            for (let i = 1; i < arr.length; i++) {
                 current.next = new node(arr[i]);
                 current = current.next;
             }
             return head;
         }
         let head = createList(arr);
-        
-        function reserveList(head){
+
+        function reserveList(head) {
             let slow = head;
             let fast = head;
             let prev = null;
-            while(fast && fast.next){
+            while (fast && fast.next) {
                 fast = fast.next.next;
                 let temp = slow.next;
                 slow.next = prev;
                 prev = slow;
                 slow = temp;
             }
-            while(slow && prev){
-                if(slow.val !== prev.val){
+            // console.log(fast.val)
+            // 基数 肯定有slow和pre一前一后不可能在一起
+            if (fast)
+                slow = slow.next
+            while (slow && prev) {
+
+                if (slow.val !== prev.val) {
                     return false;
                 }
-                console.log(slow.val,prev.val);
+                console.log(slow.val, prev.val);
                 slow = slow.next;
                 prev = prev.next;
             }
@@ -52,4 +62,5 @@
         console.log(reserveList(head));
     </script>
 </body>
+
 </html>

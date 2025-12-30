@@ -1,0 +1,17 @@
+注意链表的地址！ 是区分他们的区分它们的关键
+
+
+function createList(arr) {
+            let head = new node(arr[0]);
+            let current = head;
+            for (let i = 1; i < arr.length; i++) {
+                current.next = new node(arr[i]);
+                current = current.next;
+            }
+            return head;
+        }
+
+ function node(val) {
+            this.val = val;
+            this.next = null;
+        }
