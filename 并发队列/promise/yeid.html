@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+
+<body>
+    <script>
+        function* a() {
+            yield 1;
+            yield 2;
+            return 3;
+        }
+
+        const it = a(); //第一次调用是创建迭代器对象
+        console.log(it.next()); //第一次调用无法传值
+        console.log(it.next());
+        console.log(it.next());
+
+
+        const foo = function* () {
+            yield "a";
+            yield "b";
+            yield "c";
+            };
+            
+        const it2 = foo();
+        console.log(it2);
+        console.log(it2.next());
+        console.log(it2.next());
+        console.log(it2.next());
+            console.log(it2.next());
+
+        let str = "";
+        for (const val of foo()) {
+            console.log(val);
+            str = str + val;
+        }
+    </script>
+</body>
+
+</html>

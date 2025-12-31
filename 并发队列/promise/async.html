@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+
+<body>
+    <script>
+        function p(num) {
+            return  Promise.resolve(num*2)
+        }
+
+        function* genartor() {
+            const val1 = yield p(2);
+            const val2 = yield p(val1);
+            return val2;
+        }
+
+        function asyncFun(genartor) {
+            return () => {
+                return new Promise((resolve, reject) => {
+                    const gen = genartor();
+                    //val的概念是什么、
+                    //是p 这个promise的返回值，然后作为下一个yield的返回值
+
+                    function step(val) {
+                        let res
+                        console.log('val',val);
+                        try {
+                            res = gen.next(val);
+                        } catch (err) {
+                            return reject(err)
+                        }
+                        const { value, done } = res;
+                        if (done) {
+                            resolve(value) //最后一个是return的值
+                            return
+                        }
+                        value.then((val) => {
+                            step(val)
+                        })
+                    }
+                    step(); //第一次调用不传值，所以val是undefined
+                            //next(val)的特点
+                })
+            }
+        }
+        const asyncFn = asyncFun(genartor);
+        asyncFn()
+    </script>
+</body>
+
+</html>

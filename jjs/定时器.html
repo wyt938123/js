@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+
+<body>
+    <!-- //https://juejin.cn/post/6844904022051127310?searchId=2025123109472833183BC893F7A8930581
+     这里的格式更好 -->
+
+
+     <!-- setInterval 比 setTimeout 更特殊：它会每隔 delay 时间尝试把回调加入队列，但如果队列中已有未执行的 setInterval 回调，新的会被忽略（避免重复排队）。 -->
+<!-- 这意味着：setInterval 的回调不会被强制执行，且实际执行间隔可能大于设置的 delay（比如同步任务阻塞时，多个 delay 周期的回调会合并执行）。 -->
+    <script>
+        function getTime(call, delay) {
+            //如果是普通null的话，只会直接ruturn第一个timer--拷贝
+            let timer = { id : null };
+            let oldtime = Date.now();
+            function fun() {
+                timer.id = setTimeout(() => {
+                    call();
+                    console.log(Date.now() - oldtime);
+                    oldtime = Date.now();
+                    clearTimeout(timer.id);
+                    fun();
+                }, delay);
+            }
+
+            fun();
+            return timer;
+        }
+        let timer = getTime(() => {
+            console.log("定时器执行了");
+        }, 1000);
+        setTimeout(() => {
+            clearTimeout(timer.id);
+            console.log("定时器结束");
+        }, 3000);
+
+
+        //在 JavaScript 中：
+
+// 基本类型（Primitive Types）：
+// 包括 Number、String、Boolean、null、undefined、Symbol。
+
+// 赋值、传参、Return：都是按值传递（Copy）。
+// 也就是把“值”复制一份给对方。修改新的变量不会影响原来的变量。
+// 你的例子中：return timer 返回的是那一瞬间的数字（比如 1）。即使函数内部的 timer 变量后来变成了 2、3，外面拿到的那个 1 永远不会变。
+// 引用类型（Reference Types）：
+// 包括 Object、Array、Function。
+
+// 赋值、传参、Return：都是按引用传递（Address）。
+// 也就是把“内存地址”复制一份给对方。大家指向同一个房间，谁改了房间里的东西，大家都能看到。
+// 修复方案中：我们返回了一个对象 { id: ... }。外部拿到的是这个对象的地址。函数内部修改 obj.id，外部通过同一个地址去读 obj.id，就能读到最新的值。
+        
+    </script>
+</body>
+
+</html>

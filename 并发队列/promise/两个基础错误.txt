@@ -1,0 +1,96 @@
+这是一个作用域（Scope）问题。
+
+在 try 代码块中使用 const { value, done } = ... 定义的变量，其作用域仅限于 try 块内部。当代码执行到 try 块外面的 if (done) 时，done 和 value 已经访问不到了，所以报错 ReferenceError: done is not defined。
+
+此外，还有一个逻辑问题：当 done 为 true 时，应该 return 终止函数执行，否则代码会继续向下执行 value.then，而此时 value 是生成器的返回值（可能是普通值），调用 .then 可能会报错。
+修改点总结：
+
+变量作用域：将 gen.next(val) 的结果赋值给 try 块外部可访问的变量 res，然后再解构。
+终止执行：在 if (done) 中添加 return，防止生成器结束后继续执行后续逻辑。
+安全性：使用 Promise.resolve(
+value)包裹，确保即使yield 后面跟的是普通值（非 P
+
+
+// ...existing code...
+                    function step(val) {
+                        let res;
+                        try {
+                            // 1. 将结果赋值给外部变量，或者在 try 外部定义变量
+                            res = gen.next(val);
+                        } catch (err) {
+                            return reject(err)
+                        }
+
+                        const { value, done } = res;
+
+                        if (done) {
+                            // 2. 这里必须加 return，否则会继续执行下面的代码
+                            return resolve(value) 
+                        }
+
+                        // 3. 建议使用 Promise.resolve 包裹，防止 yield 后面不是 Promise
+                        Promise.resolve(value).then(val => {
+                            step(val)
+                        }, err => reject(err))
+                    }
+                    step(); //第一次调用不传值，所以val是undefined
+// ...existing code...
+
+
+
+TypeError: value.then is not a function
+
+这个错误的原因是：当生成器执行完毕（done 为 true）时，代码没有停止执行，而是继续尝试去调用 value.then。
+
+此时 value 是生成器的返回值（即 return val2 的结果，是一个数字），数字没有 .then 方法，所以报错。
+
+你需要做两处修改：
+
+在 if (done) 中添加 return，终止后续代码执行。
+为了代码健壮性（防止 yield 后面跟的不是 Promise），建议用 Promise.resolve(value) 包裹。
+
+
+// ...existing code...
+                    function step(val) {
+                        let res
+                        try {
+                            res = gen.next(val);
+                        } catch (err) {
+                            return reject(err)
+                        }
+                        const { value, done } = res;
+                        if (done) {
+                            // 修改点1：这里必须加 return，否则代码会继续向下执行
+                            return resolve(value) 
+                        }
+                        
+                        // 修改点2：建议使用 Promise.resolve 包裹，兼容 yield 后面不是 Promise 的情况
+                        Promise.resolve(value).then((val) => {
+                            step(val)
+                        }, (err) => {
+                            reject(err) // 捕获 Promise 的错误
+                        })
+                    }
+                    step(); <!-- filepath: d:\js\并发队列\promise\async.html -->
+// ...existing code...
+                    function step(val) {
+                        let res
+                        try {
+                            res = gen.next(val);
+                        } catch (err) {
+                            return reject(err)
+                        }
+                        const { value, done } = res;
+                        if (done) {
+                            // 修改点1：这里必须加 return，否则代码会继续向下执行
+                            return resolve(value) 
+                        }
+                        
+                        // 修改点2：建议使用 Promise.resolve 包裹，兼容 yield 后面不是 Promise 的情况
+                        Promise.resolve(value).then((val) => {
+                            step(val)
+                        }, (err) => {
+                            reject(err) // 捕获 Promise 的错误
+                        })
+                    }
+                    step(); 

@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<body>
+    <script>
+        // 第一组链式调用
+Promise.resolve() // p0（fulfilled，值 undefined）
+  .then(() => { // t0（第一个 then 回调）
+    console.log(0);
+    return Promise.resolve(4); // p3（fulfilled，值 4）
+  })
+  .then((res) => { // t1（第二个 then 回调）
+    console.log(res)
+  })
+
+// 第二组链式调用
+Promise.resolve() // p4（fulfilled，值 undefined）
+  .then(() => { // t2（第一个 then 回调）
+    console.log(1);
+  })
+  .then(() => { // t3（第二个 then 回调）
+    console.log(2);
+  })
+  .then(() => { // t4（第三个 then 回调）
+    console.log(3);
+  })
+  .then(() => { // t5（第四个 then 回调）
+    console.log(5);
+  })
+  .then(() => { // t6（第五个 then 回调）
+    console.log(6);
+  })
+
+  //先执行一个关联两个promise2和promise3的then
+  //
+
+
+//核心规则
+// Promise.resolve() 是同步执行的，但 .then() 中的回调是异步的（微任务）。
+// 当一个 .then() 回调执行完毕，它返回的新 Promise 状态变为 fulfilled，紧接着的下一个 .then() 回调会被加入微任务队列。
+// 关键点：当 .then() 中返回一个 Promise.resolve(4) 时，这不会立即把下一个 .then 加入队列。根据 V8 引擎的规范，返回一个 Promise 会产生两次额外的微任务消耗（可以理解为“慢两拍”），因为引擎需要等待这个内部 Promise 状态确定。
+// 执行步骤推演
+// 第一轮（同步代码执行）：
+
+// 链1：Promise.resolve() 立即完成。t0 (console.log(0)) 被加入微任务队列。
+// 链2：Promise.resolve() 立即完成。t2 (console.log(1)) 被加入微任务队列。
+// 当前微任务队列：[t0, t2]
+// 第二轮（处理微任务）：
+
+// 取出 t0 执行：
+// 输出 0。
+// 返回 Promise.resolve(4)。这是一个 Promise 对象。
+// 注意：因为返回的是 Promise，JS 引擎会创建一个隐藏的微任务（我们叫它 M1）来处理这个 Promise 的状态同步，而不是直接把 t1 (console.log(res)) 加入队列。
+// 当前队列：[t2, M1]
+// 取出 t2 执行：
+// 输出 1。
+// 返回 undefined（普通值）。
+// 链2的下一个 .then (t3) 立即被加入队列。
+// 当前队列：[M1, t3]
+// 第三轮：
+
+// 取出 M1 执行：
+// 这是处理 return Promise.resolve(4) 的内部任务。执行后，它又产生一个新的微任务（我们叫它 M2），用于最终将结果传递给外部 Promise。
+// 当前队列：[t3, M2]
+// 取出 t3 执行：
+// 输出 2。
+// 链2的下一个 .then (t4) 加入队列。
+// 当前队列：[M2, t4]
+// 第四轮：
+
+// 取出 M2 执行：
+// 此时，链1中 t0 返回的 Promise 终于处理完毕，状态变为 fulfilled。
+// 链1的下一个 .then (t1, 即 console.log(res)) 终于被加入队列。
+// 当前队列：[t4, t1]
+// 取出 t4 执行：
+// 输出 3。
+// 链2的下一个 .then (t5) 加入队列。
+// 当前队列：[t1, t5]
+//
+//
+    </script>
+</body>
+</html>

@@ -1,0 +1,54 @@
+嵌套调用，第一个函数的输出往往是第二个函数的输入；
+处理多个异步请求并发，开发时往往需要同步请求最终的结果。
+
+满足第一个
+let fs = require('fs')
+
+function read(filename) {
+  return new Promise((resolve, reject) => {
+    fs.readFile(filename, 'utf8', (err, data) => {
+      if (err) reject(err);
+      resolve(data);
+    })
+  })
+}
+
+read('./name.txt').then((data)=>{
+  return read(data) 
+}).then((data)=>{
+  return read(data)  
+}).then((data)=>{
+    console.log(data);
+},err=>{
+    console.log(err);
+})
+
+作者：齐小神
+链接：https://juejin.cn/post/6850037281206566919
+来源：稀土掘金
+著作权归作者所有。商业转载请联系作者获得授权，非商业转载请注明出处。
+
+promise.then方法也是立即调用的，返回一个promise，并且其状态是🈶由return的值决定的
+then函数本身的逻辑会立即执行，而且回调函数作为参数在里面进行处理
+
+
+
+具体来说：
+promise2 的声明是 const promise2 = new MyPromise(...)，const 变量的初始化是 “先创建绑定、再执行赋值”，且在赋值完成前处于 “暂时性死区（TDZ）”，无法访问；
+执行器函数（(resolve, reject) => { ... }）在 new MyPromise 时立即同步执行，此时 promise2 还未完成赋值（因为 new MyPromise 还在执行中），但你在执行器内部调用了 resolvePromise(promise2, x, resolve, reject)，直接引用了处于 TDZ 中的 promise2，因此触发该错误。
+
+
+function resolvePromise(promise2, x, resolve, reject) {
+  // 如果相等了，说明return的是自己，抛出类型错误并返回
+  if (promise2 === x) {
+    return reject(new TypeError('Chaining cycle detected for promise #<Promise>'))
+  }
+  if(x instanceof MyPromise) {
+    x.then(resolve, reject)
+  } else{
+    resolve(x)
+  }
+
+导致 return 的promise进入then流程
+
+
