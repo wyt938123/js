@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+
+<body>
+    <script>
+        //还可以在属性前面加上 pravite表示私有属性，只有类的内部可以访问，但是ts才有private关键字，js没有,public表示公共属性，类的内部和外部都可以访问，js默认就是public
+        //修复：JavaScript 的私有属性使用 # 前缀，而不是 private 关键字。
+        class AdNet {
+            static #instance // 实例
+            adRVCacheList = []; // 激励视频缓存池
+            storeyData = []; // 广告队列
+            static GetInstance() {
+                if (!this.#instance) {
+                    this.#instance = new AdNet();
+                }
+                return this.#instance;
+            }
+
+            setStoreyData(config) {
+                this.storeyData = config;
+            }
+        }
+        //1.这里用了static还可以用this拿到instance？
+        //在 JavaScript/TypeScript 中，当你在静态方法（static method）内部使用 this 时，它指向的是类本身（即构造函数 AdNet），而不是类的实例。
+        // 因为 instance 被定义为静态属性 (private static instance: AdNet)，它挂载在类上，所以：
+        // this 指向 AdNet 类。
+        // this.instance 等同于 AdNet.instance。
+
+        //原因：：：：因为GetInstance是有函数（类）调用的
+
+        //2.new AdNet只是创建了个空对象吧?
+        /*
+        不完全是。虽然代码中没有显式写出 constructor（构造函数），但 new AdNet() 并不是创建一个空对象。
+        在 TypeScript/ES6 类中，你在类顶部定义的那些属性（字段）会在实例化时自动初始化。
+        当你执行 new AdNet() 时，发生的事情如下：
+        创建对象：创建一个新的对象实例。
+        初始化属性：类中定义的带有初始值的属性会被赋值给这个新对象。
+        所以，new AdNet() 创建出来的对象实际上包含了这些初始状态。
+        */
+
+        
+
+    </script>
+
+    <script>
+        
+    </script>
+    //3>class内部静态函数和实例函数的初始化时机，下面函数的定义时机呢？全部都是在类初始化时期定义，还是仅仅static在初始化时期定义了
+
+        /*
+         * 简单直接的回答是：所有的函数（方法），无论是静态的（static）还是非静态的，都是在“类定义时期”（即代码加载时）就已经定义好了。
+
+它们不是在 new AdNet() 的时候才定义的。
+
+为了让你更清楚，我们可以把过程分为两个阶段：
+
+阶段 1：类加载阶段（代码刚运行，还没执行 new）
+当 JS 引擎读取到 class AdNet { ... } 这段代码时，它会做以下事情：
+
+创建类构造器：创建一个叫 AdNet 的函数对象。
+定义静态方法：把 static GetInstance() 直接挂载到 AdNet 这个函数对象上。
+定义实例方法：把 loadAd、serialLoad、getAd 等所有非静态方法，挂载到 AdNet.prototype（原型对象）上。
+此时，所有的函数代码都已经存在内存里了，只定义了一次。
+
+阶段 2：实例化阶段（执行 new AdNet()）
+当你调用 GetInstance 内部的 new AdNet() 时：
+
+创建空对象：创建一个新对象 instance。
+链接原型：把这个新对象的 __proto__ 指向 AdNet.prototype。
+这就是为什么实例可以调用 loadAd，因为它顺着原型链找到了阶段 1 定义好的函数。
+初始化实例属性：只有这时候，才会执行类顶部的属性赋值：
+this.adRVCacheList = []
+this.loadAdCount = 0
+...等等。
+
+// --- 阶段 1：类定义 ---
+
+// 1. 定义构造函数
+function AdNet() {
+    // --- 阶段 2：实例化时才执行这里 ---
+    this.adRVCacheList = []; 
+    this.storeyData = [];
+    this.isRequestLoadAd = false;
+    // ... 属性在这里初始化
+}
+
+// 2. 静态方法（直接挂在函数上）
+AdNet.GetInstance = function() {
+    if (!AdNet.instance) {
+        AdNet.instance = new AdNet();
+    }
+    return AdNet.instance;
+};
+
+// 3. 实例方法（挂在原型上，所有实例共享，只定义一次）
+AdNet.prototype.serialLoad = function() { ... };
+AdNet.prototype.parallelLoad = function() { ... };
+AdNet.prototype.loadAd = function() { ... };
+         * /
+</body>
+
+</html>
