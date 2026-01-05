@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<body>
+    <script>
+        //单例模式：确保一个类只有一个实例，并提供一个全局访问点。
+        //广告队列
+        class Sing{
+            constructor(){
+                this.name="单例模式";
+                if(Sing.instance){
+                    return Sing.instance;
+                }
+                Sing.instance=this;
+            }
+            static getInstance(){
+                if(!Sing.instance){
+                    Sing.instance=new Sing();
+                }
+                return Sing.instance;
+            }
+        }
+        const singleInstance =  Sing.getInstance();
+        console.log(singleInstance.name); // 输出: 单例模式
+
+    </script>
+</body>
+</html>

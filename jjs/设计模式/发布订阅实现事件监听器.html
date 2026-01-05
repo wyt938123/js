@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+
+<body>
+    <script>
+        class myListener {
+            //就是一个事件名对应多个回调函数
+            constructor() {
+                this.linster = new Map();
+            }
+            on(eventName, callBack) {
+                if (!callBack instanceof Function)
+                    return;
+                if (!this.linster.has(eventName)) {
+                    this.linster.set(eventName, []);
+                }
+                this.linster.get(eventName).push(callBack);
+            }
+            emit(eventName) {
+                const calls = this.linster.get(eventName);
+                if (calls) {
+                    calls.forEach(cb => cb());
+                }
+            }
+            off(eventName, callback) {
+                const calls = this.linster.get(eventName);
+                if (calls) {
+                    const index = calls.indexOf(callback);
+                    if (index !== -1) {
+                        calls.splice(index, 1);
+                    }
+                }
+            }
+        }
+        const myEmitter = new myListener();
+        myEmitter.on('event1', () => {
+            console.log('事件1被触发了！');
+        });
+        myEmitter.on('event1', () => {
+            console.log('事件1又被触发了！');
+        });
+        myEmitter.on('event2', () => {
+            console.log('事件2被触发了！');
+        });
+        myEmitter.emit('event1');
+        myEmitter.emit('event2');
+
+        {
+            //垃圾，无法通过指定事件名来实现监听
+            class CustomEventEmitter {
+                constructor(name) {
+                    this.name = name;
+                    this.listeners = [];
+                }
+                on(listener) {
+                    if (listener instanceof Function)
+                        this.listeners.push(listener);
+                }
+                emit() {
+                    this.listeners.forEach(listener => {
+                        listener();
+                    });
+                }
+
+            }
+            const emitter = new CustomEventEmitter('myEmitter');
+            emitter.on(() => {
+                console.log('事件被触发了！');
+            });
+            emitter.on(() => {
+                console.log('事件被触发了！');
+            });
+            emitter.emit();
+        }
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+
+<body>
+    <script>
+        //这个就是迭代器协议    ，，， 需要return一个可迭代对象，包含next方法
+        //可迭代对象：包含[Symbol.iterator]方法的对象
+        // [Symbol.iterator]: function () {
+        //             let index = 0
+        //             let _iterator = {
+        //                 //这里一定要箭头函数，或者手动保存上层作用域的this
+        //                 next: () => {
+        //                     if (index < this.bears.length) {
+        //                         return { done: false, value: this.bears[index++] }
+        //                     }
+
+        //                     return { done: true, value: undefined }
+        //                 }
+        //             }
+
+        //             return _iterator
+        //         }
+
+        function createIterator(obj) {
+            let keys = Object.keys(obj);
+            let index = 0;
+            //利用闭包
+            return {
+                next() {
+                    //注意++的位置，一定要靠后哦
+                    return index < keys.length
+                        ? { value: [keys[index], obj[keys[index++]]], done: false }
+                        : { done: true };
+                }
+            };
+        }
+
+        function createObj(a, b) {
+            this.a = a;
+            this.b = b;
+            this[Symbol.iterator] = createIterator.bind(this, this);
+        }
+        for (let value of new createObj(1, 2)) {
+            console.log(value);
+        }
+    </script>
+</body>
+
+</html>
