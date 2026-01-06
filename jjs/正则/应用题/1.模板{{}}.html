@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<body>
+    <script>
+        const templete =  "Hello, {{user.name}}! Age: {{age}}";
+        function render(templete){
+            let reg = /\{{2}[^}]+\}{2}/g
+            return function (value){
+                return templete.replace(reg,(match)=>{
+                    let key = match.slice(2,-2).trim();
+                    let keys = key.split('.');
+                    let res = value;
+                    for(let k of keys){
+                        res = res[k];
+                    }
+                    return res;
+                })
+            }
+        }
+        const result =  render(templete);
+        const a = { user: { name: "Alice" }, age: 25 }
+        const newtemplet = result(a); // "Hello, Alice! Age: 25"
+        console.log(newtemplet)
+        // const key = ['user','name']
+        // res = a;
+        // for(let k of key){
+            
+        //     res = res[k];
+        //     console.log(res);
+        // }
+    </script>
+</body>
+</html>

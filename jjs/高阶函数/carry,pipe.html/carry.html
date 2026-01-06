@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<body>
+    <script>
+        //封转fn的过程是逐个传参的过程，知道length>参数个数
+        function carry(fu){
+            //返回一个函数，这个函数负责接收参数
+            const carraied = function(...arg){
+                    console.log(...arg)
+
+                if(arg.length == fu.length){
+                    return fu(...arg)
+                }else{
+                    // return function(...args2){
+                    //     return carraied(...arg,...args2)
+                    // }
+                    //bind本身可以存储参数
+                    return carraied.bind(null,...arg)
+                }
+            }
+            return carraied
+        }
+        function add(a,b,c){
+            return a+b+c
+        }
+        const carryedAdd = carry(add)
+        console.log(carryedAdd(1)(2)(4)) //6
+
+
+        //非严格柯里化，可以传多个参数
+        function carry2(fu){
+            const carraied = function(...arg){
+                if(arg.length >= fu.length){
+                    return fu(...(arg).slice(0,fu.length))
+                }else{
+                    return carraied.bind(null,...arg)
+                }
+            }
+            return carraied
+        }
+        const carryedAdd2 = carry2(add)
+        console.log(carryedAdd2(1,2)(4,5)) //6
+    </script>
+</body>
+</html>
