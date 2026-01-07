@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<body>
+    <script>
+        const obj = {
+            a: {
+                b: {
+                    c: 123
+                }
+            },
+            d: [1,2,3,4]
+        }
+        console.log(obj['a']); // 123
+        let a = 'a'; //必须先声明，可以是变量也是优于.的方式
+        console.log(obj[a]); // 123
+    </script>
+</body>
+</html>

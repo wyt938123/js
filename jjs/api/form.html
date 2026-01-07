@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+
+<body>
+    <script>
+        Array.myform = function (arrayLike, ...args) {
+            const arr = new this(); // this 指向调用 myform 的构造函数（这里是 Array）
+            for (let i = 0; i < arrayLike.length; i++) {
+                arr[i] = arrayLike[i];
+                if (args.length > 0) {
+                    args[0].call(args[1], arr[i]); // 对每个元素应用回调函数
+                }
+            }
+
+            return arr;
+        }
+        //         const result = Array.myform({0:'a',1:'b',2:'c',length:3},(item)=>{console.log('item:',item)});
+        //         console.log(result); // 输出: ['a', 'b', 'c']
+        //         //这段代码实现了 Array.from 的基本逻辑，但存在以下几个逻辑问题：
+
+        // 忽略了回调函数的返回值：Array.from 的第二个参数（映射函数）应该返回处理后的值并存入新数组。你的代码虽然执行了回调，但 arr[i] 依然等于原始的 arrayLike[i]。
+        // 参数传递不完整：映射函数通常接收两个参数：(item, index)。你的代码只传了 item。
+        // 性能与长度：new this() 创建的是空数组，虽然通过索引赋值没问题，但通常建议根据 arrayLike.length 预设长度。
+        //
+
+
+
+
+        //改进
+        // ...existing code...
+        Array.myform2 = function (arrayLike, mapFn, thisArg) {
+            const arr = new this();
+            const len = arrayLike.length || 0;
+
+            for (let i = 0; i < len; i++) {
+                const item = arrayLike[i];
+                if (typeof mapFn === 'function') {
+                    // 1. 使用 call 绑定 thisArg
+                    // 2. 传入 item 和 index
+                    // 3. 将返回值存入数组
+                    arr[i] = mapFn.call(thisArg, item, i);
+                } else {
+                    arr[i] = item;
+                }
+            }
+            arr.length = len; // 确保长度正确
+            return arr;
+        }
+
+        // 测试：将 a, b, c 转换为大写
+        const result2 = Array.myform2({ 0: 'a', 1: 'b', 2: 'c', length: 3 }, (item) => item.toUpperCase());
+        console.log(result2); // 输出: ['A', 'B', 'C']
+        // ...existing code...
+    </script>
+</body>
+
+</html>

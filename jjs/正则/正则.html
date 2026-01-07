@@ -53,11 +53,15 @@
             let str = "123456789.123456"
             // let reg = /(\d)(?=(\d{3})+(?:[\.]\d*))?$/g
             // let reg = /(\d)(?=(\d{3})+(.\)$))/g;
+            //(?=(\d{3})+(\.))：正向先行断言，要求当前数字后面跟着「至少一组 3 个数字」，且最终以小数点 . 结尾；
             let reg = /\d(?=(\d{3})+(\.))/g;
             let reg1 = /\d(?=(\d{3})+(\.|$))/g;
             // let newStr = str.replace(reg, '$1,');
             let newStr = str.replace(reg, '$&,');
             console.log(newStr);
+            let reg3 = /\B(?=(\d{3})+(?!\d)(?<!(\.)))/g
+            let newStr3 = str.replace(reg3, ',');
+            console.log(newStr3);
         } 
     </script>
 </body>

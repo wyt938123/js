@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+
+<body>
+    <button style="width: 100px;height: 100px;background-color: aquamarine;" onclick="cachedCalculateFn(10_000_000_000)">点击计算大数
+    </button>
+    <script>
+        const calculateFn = (num) => {
+            const startTime = new Date()
+            for (let i = 0; i < num; i++) { } // 大数计算
+            const endTime = new Date()
+            console.log(endTime - startTime)
+            return "Calculate big numbers"
+        }
+
+
+        const cacheRecult=  function(fn){
+            let cache = new Map()
+            return function(value){
+                if(cache.has(value)){
+                    console.log('从缓存中获取结果')
+                    return cache.get(value)
+                }
+                else{
+                    const result = fn(value)
+                    cache.set(value,result)
+                    console.log('计算并缓存结果')
+                    return result
+                }
+            }
+        }
+        const cachedCalculateFn = cacheRecult(calculateFn)
+
+    </script>
+</body>
+
+</html>

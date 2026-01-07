@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<body>
+    <script>
+        function changtemplete(templete ){
+            //如果还有其他更多的情况呢，是不是要用一个map来存储所有的情况？
+            // const reg = /\{{2}([^}]+)\}{2}|\$\{([^}^{]+)\}/g
+              const regex = /(?<!\$)\{\{([\w\.\[\]]+?)\}\}|\$\{([\w\.\[\]]+?)\}/g;
+            return function(data){
+              return templete.replace(regex,(match,p1,p2)=>{
+                    let caputare = (p1 || p2).trim();
+                    console.log(caputare);
+                    let regx = /\w+/g;
+                    let res = data;
+                    let ket;
+                    //数字一样直接当键，注意[]的情况,需要字符串
+                    while(ket = regx.exec(caputare)){
+                        // console.log(ket[0]);
+                        // console.log(data);
+                       res = res[ket[0]];
+                    }
+                    console.log(res);
+                    return res;
+                })
+            }
+        }
+        // 测试：包含合法格式 + 非法混合格式
+const template = `
+  合法1: {{user.name}} 
+  合法2: \${user.balance}
+  合法1: \{{user.items[0]}}  
+  非法2: \${ user.items[2].kk }}
+  非法3: {{user.age } 
+`;
+
+const render = changtemplete(template);
+const data = {
+  user: {
+    name: "Alice",
+    balance: 999.99,
+    items: ["手机", "耳机", { kk: "充电宝" }],
+    age: 25
+  }
+};
+
+console.log(render(data));
+
+
+        
+    </script>
+
+
+<!-- 参数位置 / 名称	必选 / 可选	含义
+match	必选	本次匹配到的完整字符串（对应正则的整体匹配结果）
+p1, p2, ..., pn	可选	本次匹配中，正则捕获组的匹配结果（有多少个捕获组，就有多少个参数）
+offset	可选	本次匹配的完整字符串在原字符串中的起始索引（位置）
+string	可选	原始的、待替换的完整字符串
+groups	可选	若正则使用了命名捕获组，则该参数是一个对象，包含命名捕获组的键值对 -->
+</body>
+</html>

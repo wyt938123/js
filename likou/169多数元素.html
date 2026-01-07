@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<body>
+    <script>
+        var majorityElement = function(nums) {
+    let Index = Math.floor(Math.random()*nums.length) | 0;
+    return nums[Index];
+};
+
+
+//
+//思路很哇塞，解析不够全面，没提到非众数之间的抵消。
+// 如果众数不在前两位，就会有非众数之间的抵消。但这并影响结论，因为非众数之间内耗，只会进一步使得众数更占优势。
+// 比如众数如果是2，且都在数组尾部，前面其他数字内耗完了，最后使得votes大于0的只可能是2。
+    </script>
+</body>
+</html>

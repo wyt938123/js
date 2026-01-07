@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<body>
+    <script>
+        Function.prototype.myBind = function(context,...args){
+            if(typeof this!== 'function'){
+                throw new TypeError('Bind must be called on a function')
+            }
+            return (...args2)=>{
+                return this.apply(context,[...args,...args2])
+            }
+        }
+        const obj = {
+            x:10,
+            y:20
+        }
+
+        function add(a,b,c){
+            console.log(this.x + this.y + a + b + c)
+        }
+        const boundAdd = add.myBind(obj,1,2)
+        console.log(boundAdd(3)) //6
+    </script>
+</body>
+</html>

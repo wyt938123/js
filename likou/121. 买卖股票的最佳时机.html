@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+
+<body>
+    <script>
+        // 模拟过程 会怎么样？每一步的可能
+        nums = [7,1,5,3,6,4];
+        var maxProfit = function (prices) {
+            let minPrice = Infinity
+            let maxProfit = 0
+            for (let price of prices){
+                if(price<minPrice){
+                    minPrice = price
+                }
+                else if(price - minPrice > maxProfit){
+                    maxProfit = price - minPrice
+                }
+            }
+            return maxProfit;
+        };
+        console.log(maxProfit(nums));
+    </script>
+</body>
+
+</html>

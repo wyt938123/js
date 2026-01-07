@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+
+<body>
+    <script>
+        function ajax(url, data, callback) {
+            // ...
+        }
+
+        let ajaxTest2 = partial(ajax, 'http://www.test.com/test2')
+
+        ajaxTest2(data, callback)
+
+
+        function partial(fn, ...presetArgs) { // presetArgs 是需要先被绑定下来的参数
+            return function partiallyApplied(...laterArgs) { //  ...laterArgs 是后续参数
+                let allArgs = presetArgs.concat(laterArgs) // 收集到一起
+                return fn.apply(this, allArgs) // 传给回调函数 fn
+            }
+        }
+
+        // 作者：掘金安东尼
+        // 链接：https://juejin.cn/post/7147454421822078984
+        // 来源：稀土掘金
+        // 著作权归作者所有。商业转载请联系作者获得授权，非商业转载请注明出处。
+    </script>
+</body>
+
+</html>

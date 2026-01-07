@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+
+<body>
+    <script>
+
+        
+        function compase(...fns){
+            let result = 0
+            const doit = function(value){
+                if(fns.length ===0){
+                    return result
+                }
+                result = fns.pop()(value)
+                return doit(result)
+            }
+            return doit
+        }
+        const pipedFunction1 = compase(
+            x => x + 1,
+            x => x * 2,
+            x => x - 3
+        )
+        console.log(pipedFunction1(5)) // ((5 - 3) * 2) + 1 = 5
+        //这里return的高阶函数，只支持接收一个参数，this无法绑定，最简单的管道函数
+//
+        function pipe(...fns) {
+            return function (value) {
+                return fns.reduce((acc, fn) => fn(acc), value)
+            }
+        }
+        const add = x => x + 1
+        const add2 = (a, b) => a + b + 1
+        const multiply = x => x * 2
+        const subtract = x => x - 3
+        const pipedFunction = pipe(add, multiply, subtract)
+        console.log(pipedFunction(5)) // ((5 + 1) * 2) - 3 = 9
+
+
+
+        const pipe2 = (...fns) => {
+            if (fns.length === 0) return (x) => x;
+            return async function (...args) {
+                let result = fns[0].apply(this, args);
+                // 处理异步结果
+                if (result instanceof Promise) result = await result;
+                for (let i = 1; i < fns.length; i++) {
+                    result = fns[i].call(this, result);
+                    if (result instanceof Promise) result = await result;
+                }
+                return result;
+            };
+        };
+        const pipedFunction2 = pipe2(add2, multiply, subtract)
+        console.log(pipedFunction2(2, 3)) // 9
+
+
+
+
+        const obj1 = {
+            name: 'Alice',
+        }
+
+        function addname(str) {
+            return `${this.name} says: ${str}`
+        }
+        function addExclamation(str) {
+            return `${str}!` + 'good!'
+        }
+        const pipedFunction3 = pipe2(addname, addExclamation)
+        console.log(pipedFunction3.call(obj1, 'Hello')) // Alice says: Hello!
+    </script>
+</body>
+
+</html>

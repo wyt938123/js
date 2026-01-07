@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+
+<body>
+    <script>
+        // 正则：匹配 "年份-月份"，其中 (\d{4}) 是第1个捕获组（年份），(\d{2}) 是第2个捕获组（月份）
+        const reg = /(\d{4})-(\d{2})/;
+        const str = "2023-12 2024-01 2025-02";
+
+        // 不带 g 标志，match() 返回数组：[完整匹配, 捕获组1, 捕获组2, ...] + 额外属性（index/input等）
+        const result = str.match(reg);
+        console.log(result);
+    </script>
+</body>
+
+</html>
