@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+
+<body>
+    <script>
+        function checkRendeerTime(target, callback) {
+            let sign = false;
+            const startTime = performance.now();
+            const observer = new MutationObserver((mutationsList, observer) => {
+                //选定的节点发生变化时触发
+                //能够拿到节点说明已经渲染完成，还是部分渲染了呢 -- 子节点也完成了
+                const changNode = document.querySelector('.' + target);
+                if (changNode && !sign) {
+                    sign = true;
+                    requestAnimationFrame(() => {
+                        const endTime = performance.now();
+                        const renderTime = endTime - startTime;
+                        observer.disconnect(); // 停止观察s
+                        callback(renderTime);
+                    })
+                }
+            });
+            observer.observe(document.body, { childList: true, subtree: true ,attributes: false});
+
+        }
+
+        function creaetDom(classname) {     
+            //setAttribute 方法返回的是 undefined，而不是元素本身。
+            const checkdom = document.createElement('div');
+            checkdom.setAttribute('class', classname);
+            for (let i = 0; i < 10; i++) {
+                const div = document.createElement('div');
+                div.innerText = '这是第' + i + '个div';
+                checkdom.appendChild(div);
+            }
+            document.body.appendChild(checkdom);
+        }
+
+
+        let classname = 'render-check-' + Date.now();
+        // 先启动监听
+        checkRendeerTime(classname, function (time) {
+            console.log('渲染时间为：' + time + 'ms');
+        });
+        // 再同步创建 DOM
+        creaetDom(classname);
+        console.log(globalThis)
+    </script>
+</body>
+
+</html>
