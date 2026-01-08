@@ -6,10 +6,15 @@
     <title>Document</title>
 </head>
 <body>
-    <script>
+    <script type="module">
         // https://socket.io/zh-CN/
-
-        
+        import socket from './socket.js';
+        const ws = socket.getInstance('ws://localhost:3200');
+        ws.Connect()
+        ws.onopen = () => {
+            console.log('连接已打开');
+            ws.send('Hello Server!');
+        };
     </script>
 </body>
 </html>
