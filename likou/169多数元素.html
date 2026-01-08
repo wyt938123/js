@@ -7,10 +7,40 @@
 </head>
 <body>
     <script>
-        var majorityElement = function(nums) {
-    let Index = Math.floor(Math.random()*nums.length) | 0;
-    return nums[Index];
+//        var majorityElement = function(nums) {
+//     let Index = Math.floor(Math.random()*nums.length) | 0;
+//     return nums[Index];
+// };
+//思路为当前数就
+ var majorityElement = function(nums) {
+    let t = 0  //票数
+    let k = null  //众数
+    for(let i=0;i<nums.length;i++){
+        
+        if(t>nums.length/2){
+            return k;
+        }
+        if(t===0){
+            // let t = 1;
+            t = 1;
+            k = nums[i];
+        }
+        else if(k===nums[i]){
+            t++;
+        }else{
+            t--;
+        }
+        console.log(t,k);
+    }
+    return k;
 };
+nums = [3,3,4]
+console.log(majorityElement(nums));
+
+
+
+//更好的方法，假设当前i是总数
+
 
 
 //

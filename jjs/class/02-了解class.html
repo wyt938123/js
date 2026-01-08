@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+
+<body>
+    <div>
+        https://www.tslang.cn/docs/handbook/classes.html
+        介绍的很详细
+    </div>
+    <script>
+        const temp = {}
+
+        class Test {
+            a() { }
+            b = () => { }
+            c = 1;
+            d = {};
+            e = temp;
+            static f = temp
+        }
+
+        const test1 = new Test();
+        const test2 = new Test();
+
+        console.log(test1.a === test2.a)
+        console.log(test1.b === test2.b)
+        console.log(test1.c === test2.c)
+        console.log(test1.d === test2.d)
+        console.log(test1.e === test2.e)
+        console.log(test1 === test2)
+        console.log(Test.f === Test.f)
+
+        // 作者：eason_fan
+        // 链接：https://juejin.cn/post/7475621800783233061
+        // 来源：稀土掘金
+        // 著作权归作者所有。商业转载请联系作者获得授权，非商业转载请注明出处。
+    </script>
+</body>
+
+</html>

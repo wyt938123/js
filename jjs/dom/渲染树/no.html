@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Tree Directory Component</title>
+    <style>
+        .tree-node {
+            cursor: pointer;
+            margin-left: 20px;
+        }
+
+        .children {
+            display: none;
+            margin-left: 20px;
+        }
+
+        /* 默认隐藏子节点 */
+    </style>
+</head>
+
+<body>
+    <div id="tree"></div>
+           <!-- // 链接：https://juejin.cn/post/7488235095884464140 -->
+    <script>
+        const treeData = [
+            {
+                "id": 1,
+                "parent_id": 0,
+                "name": "北京",
+                "children": [
+                    {
+                        "id": 3,
+                        "parent_id": 1,
+                        "name": "海淀区",
+                        "children": []
+                    },
+                    {
+                        "id": 4,
+                        "parent_id": 1,
+                        "name": "朝阳区",
+                        "children": []
+                    }
+                ]
+            }
+        ];
+
+
+        // 递归创建树节点
+        function createTreeNode(node, parentElement) {
+            const div = document.createElement('div');
+            div.className = 'tree-node';
+            div.textContent = node.name;
+
+            // 点击事件：切换子节点显隐
+            div.onclick = function () {
+                const childrenDiv = parentElement.querySelector('.children');
+                if (childrenDiv) {
+                    childrenDiv.style.display =
+                        childrenDiv.style.display === 'none' ? 'block' : 'none';
+                }
+            };
+
+            parentElement.appendChild(div);
+
+            // 递归处理子节点
+            if (node.children?.length) {
+                const childrenDiv = document.createElement('div');
+                childrenDiv.className = 'children';
+                node.children.forEach(child => createTreeNode(child, childrenDiv));
+                parentElement.appendChild(childrenDiv);
+            }
+        }
+
+        // 渲染根节点
+        const treeElement = document.getElementById('tree');
+        treeData.forEach(node => createTreeNode(node, treeElement));
+    </script>
+</body>
+
+</html>

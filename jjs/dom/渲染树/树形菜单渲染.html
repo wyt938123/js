@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+
+<body>
+    <div id="tree-container">
+
+    </div>
+    <script>
+
+
+        //就是要直接传入{} ,不适合传入[]
+        //传入数组的话，可以在外面就遍历，对象是作为一个整体，可以.name等属性
+        const treeData = [
+            {
+                "id": 1,
+                "parent_id": 0,
+                "name": "北京",
+                "children": [
+                    {
+                        "id": 3,
+                        "parent_id": 1,
+                        "name": "海淀区",
+                        "children": []
+                    },
+                    {
+                        "id": 4,
+                        "parent_id": 1,
+                        "name": "朝阳区",
+                        "children": []
+                    }
+                ]
+            }
+        ];
+        //一个对象是一个节点
+
+        //    function setAllArrtribute(type , dom , data){
+        //         dom.setAttribute(`data-${type}`,data[type]);
+        //     };
+
+
+
+        function renderTree(data, container) {
+            const div = document.createElement('div');
+            div.innerHTML = data.name;
+            container.appendChild(div);
+            for (i in data) {
+                div.setAttribute(`data-${i}`, data[i]);
+                if (data[i] instanceof Array) {
+                    data[i].forEach(item => {
+                        renderTree(item, div);
+                        // div.appendChild(childDiv);
+                    })
+                }
+            }
+
+        }
+
+        const container = document.getElementById('tree-container');
+        renderTree(treeData[0], container);
+
+        // 链接：https://juejin.cn/post/7488235095884464140
+
+    </script>
+    <style>
+        .tree-node {
+            cursor: pointer;
+            margin-left: 20px;
+        }
+
+        .children {
+            display: none;
+            margin-left: 20px;
+        }
+
+        /* 默认隐藏子节点 */
+    </style>
+</body>
+
+</html>

@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+
+<body>
+    <script>
+        // 示例使用
+        const tasks = [
+            () => new Promise((resolve, reject) => setTimeout(() => {resolve();console.log('任务1完成')}, 1000)),
+            () => new Promise((resolve, reject) => setTimeout(() => {resolve();console.log('任务2完成')}, 1000)),
+            () => new Promise((resolve, reject) => setTimeout(() => {resolve();console.log('任务3完成')}, 1000))
+        ];
+
+        // function race(nowTask,raceTask){
+            
+        // }
+
+        Promise.promisestring = function(tasks,retryTimes = 3){
+            return new Promise((resolve, reject) => {
+                let current = 0;
+                let t = retryTimes
+                function runTask(){
+                    tasks[current]().then(res=>{
+                        current++;
+                        t = retryTimes; //重置重试次数
+                        if(current === tasks.length){
+                            resolve('所有任务完成');
+                        } else {
+                            runTask();
+                        }
+                    },rej=>{
+                        if(t > 0){
+                            t--;
+                            console.log(`任务${current + 1}失败，重试中...剩余重试次数：${t}`);
+                            runTask(); //重试当前任务
+                        } else {
+                            reject(`任务${current + 1}失败，已达到最大重试次数`);
+                        }
+                    })
+                }
+                runTask();  
+            })
+        }
+
+        Promise.promisestring(tasks,2).then(res=>{
+            console.log(res);
+        }).catch(err=>{
+            console.log(err);
+        });
+
+        // 链接：https://juejin.cn/post/7475621800783233061
+
+    </script>
+</body>
+
+</html>

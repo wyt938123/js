@@ -8,7 +8,7 @@ export default function parse(template) {
     // const worldReg = /^(.*?)\<\/([a-z1-6]+)\>/
     const worldReg =/^([^<]+)/ 
     const stack1 = []
-    const stack2 = []
+    const stack2 = [[]]
                 // 去除首尾空格
     let current = 0
     const outputAst = {}
@@ -31,10 +31,15 @@ export default function parse(template) {
             current = current + tag.length + 3
             console.log(tag)
             //tag必然是和stack1最后一个标签匹配的
-            if(tag === stack1[stack1.length - 1]) {
-                stack1.pop()
+            //最后一个pop时此时栈是空的
+            const node = stack1.pop()
+
+            if(tag === node) {
                 const children = stack2.pop()
+                stack2[stack2.length -1].push({tag:tag,type:'1',children:children})
             }
+            //切断引用，保证打印的是那一刻的值而不是引用。
+             console.log(JSON.parse(JSON.stringify(stack2)))
         }
         else if(worldReg.test(res)) {
         //文本节点
@@ -42,16 +47,15 @@ export default function parse(template) {
             const world = worldReg.exec(res)[1];
             current+= world.length
             // console.log(world)
-            stack2[0].push({text:world,type:'3'})
-            //切断引用，保证打印的是那一刻的值而不是引用。
-             console.log(JSON.parse(JSON.stringify(stack2)))
+            stack2[stack2.length -1].push({text:world,type:'3'})
+            
         }
         else {
             // console.log(current)
             current++
         }
 }   
-console.log(outputAst)
+console.log(stack2[0])
 }
 
 // 你遇到的情况是浏览器控制台的一个常见特性，并不是你的代码逻辑有误。
