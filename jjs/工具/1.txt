@@ -1,0 +1,97 @@
+https://www.quickapp.cn/document?menu=1%252C5&pathUrl=%252Fdoc%252Frpk%252Ffeatures%252Fsystem%252Fapp.html
+快应用对应的接口
+
+global.js 获取全局对象并且设置全局变量  为什么不使用globalthis呢
+并且在设置在文件入口被引入，方便后续设置并且拿到全局变量 要兼容对象和普通变量
+
+在快应用（QuickApp）的运行环境中，虽然它不是 Node.js，但其 JS 引擎也提供了名为 global 的全局对象，作用类似于浏览器中的 window 或 Node.js 中的 global。
+
+特殊的原型链结构：
+在某些快应用平台上，直接给 global 赋值可能只在当前作用域生效。通过 Object.getPrototypeOf(global) 获取其原型，可以触达到真正跨页面共享的顶级全局对象。
+
+
+
+「
+app.ux 中的 export default { ... } 并不是为了被其他 JS 文件 import 调用，而是**导出给快应用运行引擎（Runtime）**使用的。
+生命周期管理：引擎在应用启动、切换后台、销毁时，会自动找到这个导出的对象并触发相应的钩子函数（如 onCreate、onShow、onHide）。
+全局能力注入：你在这个对象里定义的属性（如 appInForeground）和方法（如 routePath），在所有页面中可以通过 this.$app.$def 访问。
+」
+
+
+
+// JSON.parse()异常处理
+const rawParse = JSON.parse
+JSON.parse = function (str, defaults) {
+  try {
+    return rawParse(str)
+  } catch (err) {
+    $logger.error(`JSON解析失败：${str}, ${err.stack}`)
+    return defaults
+  }
+}
+
+String.prototype.replaceAll = function (f, e) {
+  //吧f替换成e
+  var reg = new RegExp(f, 'g') //创建正则RegExp对象
+  return this.replace(reg, e)
+}
+
+/**
+ * @file 全局能力的配置与获取
+ */
+
+function getGlobalRef() {
+  return Object.getPrototypeOf(global) || global
+}
+
+const quickappGlobal = getGlobalRef()
+
+/**
+ * 设置全局(被APP与Page共享)数据；
+ * @param key {string}
+ * @param val {*}
+ */
+function setGlobalData(key, val) {
+  if ('[object Object]' == toString.call(key) && null != key) {
+    Object.keys(key).forEach((m) => {
+      quickappGlobal[m] = key[m]
+    })
+  } else {
+    quickappGlobal[key] = val
+  }
+}
+
+/**
+ * 获取全局(被APP与Page共享)数据；
+ * @param key {string}
+ * @return {*}
+ */
+function getGlobalData(key) {
+  return quickappGlobal[key]
+}
+
+// 两个方法默认定义在全局
+setGlobalData('$setGlobalData', setGlobalData)
+setGlobalData('$getGlobalData', getGlobalData)
+
+setTimeout(() => {
+  try {
+    console.log('[global] app update getUpdateManager:{}', typeof app.getUpdateManager)
+    if (app.getUpdateManager) {
+      const updateManager = app.getUpdateManager()
+      console.log('[global] app update getUpdateManager:{}', typeof updateManager.onCheckForUpdate)
+
+      updateManager.onCheckForUpdate((res) => {
+        console.log('[global] app update hasUpdate:{}', res.hasUpdate)
+      })
+
+      updateManager.onUpdateReady(() => {
+        updateManager.applyUpdate()
+      })
+    }
+  } catch (error) {
+    console.log('[global] app update getUpdateManager error', error)
+  }
+})
+
+export { setGlobalData, getGlobalData }

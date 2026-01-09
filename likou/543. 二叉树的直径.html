@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+
+<body>
+    <script>
+        var diameterOfBinaryTree = function (root) {
+            if (!root) return 0;
+            let leftlength = root.left ? 1 : 0;
+            let rightlength = root.right ? 1 : 0;
+            // let maxlenleft = 0
+            // let maxlenright = 0
+
+            function all(node, length, maxlen) {
+                function depth(node) {
+                    if (!node) return 0;
+                    length++;
+                    maxlen = Math.max(maxlen, length)
+                    let left = depth(node.left)
+                    let right = depth(node.right)
+                    length--;
+                    return;
+                }
+                depth(node)
+                return maxlen;
+            }
+            return all(root.left, leftlength, 0) + all(root.right, rightlength, 0) -2
+
+        };
+    </script>
+</body>
+
+</html>
