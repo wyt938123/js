@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+
+<body>
+    <script>
+        // 父类
+        class Parent {
+            // 实例属性，默认初始化
+             parentProp = '我是父类的实例属性';
+
+            constructor() {
+                console.log('Parent构造函数执行');
+            }
+        }
+
+        // 子类
+        class Child extends Parent {
+            constructor() {
+                super(); // 必须先调用super，执行父类构造逻辑
+                console.log('Child构造函数执行');
+            }
+        }
+
+        // 创建子类实例
+        const child = new Child();
+        // 输出：
+        // Parent构造函数执行
+        // Child构造函数执行
+
+        // 子类实例可以直接访问父类的实例属性
+        console.log(child.parentProp); // 输出：我是父类的实例属性
+        console.log(child); // true
+    </script>
+</body>
+
+</html>

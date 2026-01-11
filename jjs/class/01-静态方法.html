@@ -12,8 +12,13 @@
         //还可以在属性前面加上 pravite表示私有属性，只有类的内部可以访问，但是ts才有private关键字，js没有,public表示公共属性，类的内部和外部都可以访问，js默认就是public
         //修复：JavaScript 的私有属性使用 # 前缀，而不是 private 关键字。
         class AdNet {
-            static #instance // 实例
-            adRVCacheList = []; // 激励视频缓存池
+            //constructer中的实例属性和外面定义的实例属性有什么不同呢？？？
+            constructor(a){
+                this.a = a
+            }
+            b = 12;
+            static #instance // 静态属性 实例
+            adRVCacheList = []; // 激励视频缓存池  没有static表示实例属性
             storeyData = []; // 广告队列
             static GetInstance() {
                 if (!this.#instance) {

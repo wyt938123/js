@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+
+<body>
+    <script>
+        /*
+        无法向父类构造函数传参：
+        父类的实例是在固定位置（Child.prototype = new Parent("some value")）创建的。当你 new Child() 时，没有办法动态地将参数传递给 Parent。这导致所有 Child 实例都只能共享在定义原型阶段传入的死数据。
+
+        引用类型的属性被所有实例共享：
+        如你代码所示，修改 Child1.info.gender，child2.info 也会改变。这是因为属性存在于原型对象上，而不是实例本身。
+        
+        */
+
+
+        function Parent(chang) {
+            this.isShow = true
+            this.info = {
+                name: "yhd",
+                age: 18,
+            };
+            this.chang = chang
+        }
+
+        Parent.prototype.getInfo = function () {
+            console.log(this.info);
+            console.log(this.isShow); // true
+        }
+
+        function Child() { };
+        //父类都构造调用了
+        Child.prototype = new Parent("some value");
+
+        let Child1 = new Child();
+        Child1.info.gender = "男";
+        Child1.getInfo();  // {name: "yhd", age: 18, gender: "男"}
+
+        let child2 = new Child();
+        child2.getInfo();  // {name: "yhd", age: 18, gender: "男"}
+        child2.isShow = false
+
+        console.log(child2.isShow); // false
+        console.log(Child1.chang); // true
+
+
+
+    </script>
+</body>
+
+</html>

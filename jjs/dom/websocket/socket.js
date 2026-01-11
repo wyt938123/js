@@ -1,5 +1,5 @@
 //两个实例之间是不一样的，注意他们之间的关系
-export default class Socket {
+export default class SocketClient {
   static instanceMap = new Map();
   url = "";
   // #重连次数
@@ -20,10 +20,10 @@ export default class Socket {
   }
   //单例模式是创建类的实例，不是单个属性的实例！
   static getInstance(url) {
-    if (!Socket.instanceMap.has(url)) {
-      Socket.instanceMap.set(url, new Socket(url));
+    if (!SocketClient.instanceMap.has(url)) {
+      SocketClient.instanceMap.set(url, new SocketClient(url));
     }
-    return Socket.instanceMap.get(url);
+    return SocketClient.instanceMap.get(url);
   }
   SendMseeage(message) {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {

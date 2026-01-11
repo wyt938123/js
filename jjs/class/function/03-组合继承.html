@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<body>
+    <script>
+        /*
+        组合继承综合了原型链继承和盗用构造函数继承(构造函数继承)，将两者的优点结合了起来，
+
+        原型链---继承了父类原型上的属性和方法，
+        盗用构造函数---继承了父类实例上的属性，
+
+
+        基本的思路就是使用原型链继承原型上的属性和方法，而通过构造函数继承实例属性，这样既可以把方法定义在原型上以实现重用，又可以让每个实例都有自己的属性
+
+        ​ 优点：
+
+        父类的方法可以复用
+        可以在Child构造函数中向Parent构造函数中传参
+        父类构造函数中的引用属性不会被共享
+        */
+
+
+        function Father(name,age){
+            this.name = name
+            this.info = {
+                 age,
+            }
+        }
+        Father.prototype.consoleinfo = function(){
+            console.log(this,'father fun')
+        }
+
+        function Child(sex,...args){
+            this.sex = sex;
+            Father.call(this,...args)
+        }
+        Child.prototype = Object.create(Father.prototype)
+        Child.prototype.childfun = function(){
+            console.log(this,'child fun')
+        }
+
+        const child = new Child('man','小明','18')
+        const child2 = new Child('female','小红','17')
+        child.consoleinfo()
+        child.childfun()
+        child.info.age = 20
+        console.log(child.info.age)
+        console.log(child2.info.age)
+
+</script>
+</body>
+</html>

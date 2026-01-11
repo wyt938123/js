@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+
+<body>
+    <script>
+        /*
+        本质上就是调用了父函数，执行了函数体里面的内容，修改了this执行而已
+        根本就没有操作原型
+
+        优点:
+
+        可以在子类构造函数中向父类传参数
+        父类的引用属性不会被共享
+        缺点：
+
+        子类不能访问父类原型上定义的方法（即不能访问Parent.prototype上定义的方法），
+        因此所有方法属性都写在构造函数中，每次创建实例都会初始化
+        */
+
+
+        //
+
+        //类似等于调用父类construct函数，并且绑定this为子类实例，
+        //实现父类实例属性继承
+
+        //
+        function Parent(sex) {
+            this.info = {
+                name: "yhd",
+                age: 19,
+            }
+            this.sex = sex;
+        }
+
+        function Child(...args) {
+            Parent.call(this,...args)
+        }
+
+        let child1 = new Child('mans');
+        child1.info.gender = "男";
+        console.log(child1.info); // {name: "yhd", age: 19, gender: "男"};
+        console.log(child1.sex)
+        let child2 = new Child();
+        console.log(child2.info); // {name: "yhd", age: 19}
+
+      
+    </script>
+</body>
+
+</html>
