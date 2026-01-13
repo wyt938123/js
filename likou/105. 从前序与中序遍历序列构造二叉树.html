@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+
+<body>
+    <script>
+        //这道题频率还挺高的
+        //必须要是非重复数
+
+        //代码随想录讲的很完美
+        //都是利用前或者后 序遍历的第一个节点是根节点的特点
+        //然后在中序遍历中找到根节点的位置，就可以划分出左右子树的中序遍历
+        //再根据左右子树的中序遍历长度，就可以划分出左右子树的前序遍历
+          function TreeNode(val) {
+            this.val = val;
+            this.left = this.right = null;
+        }
+
+        var buildTree = function (preorder, midorder) {
+            if (preorder.length === 0 ) return null;
+            
+            let rootVal = preorder[0];
+            let root = new TreeNode(rootVal);
+
+            let midIndex = midorder.indexOf(rootVal);
+
+            let leftmidorder = midorder.slice(0, midIndex);
+            let rightmidorder = midorder.slice(midIndex + 1);
+
+            root.left = buildTree(preorder.slice(1,leftmidorder.length + 1) , leftmidorder)
+            root.right = buildTree(preorder.slice(leftmidorder.length + 1), rightmidorder)
+            return root;
+        };
+    </script>
+</body>
+
+</html>

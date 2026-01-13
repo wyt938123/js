@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+
+<body>
+    <script>
+        //队列模拟层序是很简单的
+        // 注意每次都要记录当前层的节点数  -- 核心
+        //然后遍历这些节点，并把他们的子节点加入队列
+
+        //遍历完一层后才会来到一次while的判断
+
+        function TreeNode(val, left, right) {
+            this.val = (val === undefined ? 0 : val)
+            this.left = (left === undefined ? null : left)
+            this.right = (right === undefined ? null : right)
+        }
+        var levelOrder = function (root) {
+            let res = [];
+            let queue = [];
+            if (!root) return res;
+            function travealTree(root){
+                queue.push(root);
+                while(queue.length){
+                    let temres = []
+                    let size = queue.length;
+                    for(let i=0;i<size;i++){
+                        let node = queue.shift();
+                        temres.push(node.val);
+                        if(node.left) queue.push(node.left);
+                        if(node.right) queue.push(node.right);
+                    }
+                    res.push(temres);
+                }
+
+            }
+            travealTree(root);
+            return res;
+        };
+
+        let root =new TreeNode(3,
+           new TreeNode(9),
+            new TreeNode(20,
+                new TreeNode(15),
+                new TreeNode(7)
+            )
+        );
+        console.log(levelOrder(root));
+    </script>
+</body>
+
+</html>

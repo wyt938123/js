@@ -9,24 +9,32 @@
 
 <body>
     <script>
-        var maxDepth = function (root) {
-            let depth = 0;
-            maxdeep = 0;
-            function dfs(root) {
-                if (!root) {
-                    return;
-                }
-                depth++;
-                maxdeep = Math.max(depth, maxdeep);
-                dfs(root.left);
-                dfs(root.right);
-                depth--;
+        // var maxDepth = function (root) {
+        //     let depth = 0;
+        //     maxdeep = 0;
+        //     function dfs(root) {
+        //         if (!root) {
+        //             return;
+        //         }
+        //         depth++;
+        //         maxdeep = Math.max(depth, maxdeep);
+        //         dfs(root.left);
+        //         dfs(root.right);
+        //         depth--;
 
-            }
-            dfs(root);
-            return maxdeep;
+        //     }
+        //     dfs(root);
+        //     return maxdeep;
 
-        };
+        // };
+
+        //depth函数返回该节点为根的子树的深度
+        function maxDepth(node) {
+            if (!node) return 0;
+            let left = maxDepth(node.left);
+            let right = maxDepth(node.right);
+            return Math.max(left, right) + 1;
+        }
     </script>
 </body>
 

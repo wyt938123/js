@@ -30,6 +30,7 @@
         }
         //实现原型继承
         function inheritPrototype(child, parent) {
+            //可以直接使用Object.create(parent.prototype) 
             let prototype = objectCopy(parent.prototype); // 创建对象
             prototype.constructor = child; // 增强对象
             child.prototype = prototype; // 赋值对象

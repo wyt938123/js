@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+
+<body>
+    <script>
+        //链表好像也很好
+        //keys的维护不是必须的，key是来维护有什么好处吗？
+
+        /**
+ * @param {number} capacity
+ */
+        var LRUCache = function (capacity) {
+            this.capacity = capacity;
+            this.cache = new Map();
+            this.keys = [];
+        };
+
+        /** 
+         * @param {number} key
+         * @return {number}
+         */
+        LRUCache.prototype.get = function (key) {
+            if(this.cache.has(key)){
+                let index = this.keys.indexOf(key);
+                this.keys.splice(index,1);
+                this.keys.unshift(key);
+                return this.cache.get(key);
+            }
+            return -1;
+        };
+
+        /** 
+         * @param {number} key 
+         * @param {number} value
+         * @return {void}
+         */
+        //缓存值也是可以更新的！！
+        LRUCache.prototype.put = function (key, value) {
+            if(this.keys.length>=this.capacity ){
+                if(this.keys.includes(key)){
+                    let index = this.keys.indexOf(key);
+                    this.keys.splice(index,1);
+                  
+                }else{
+                    let lastKey = this.keys.pop();
+                    this.cache.delete(lastKey);
+                   
+                }
+            }else{
+                //不处理就会出现重复的key！
+                if(this.keys.includes(key)){
+                    let index = this.keys.indexOf(key);
+                    this.keys.splice(index,1);
+                   
+                }
+            }
+                this.keys.unshift(key);
+                this.cache.set(key,value);
+          
+        };
+
+        let lRUCache = new LRUCache(2);
+        lRUCache.put(1, 1); // 缓存是 {1=1}
+        lRUCache.put(2, 2); // 缓存是 {1=1, 2=2}
+        console.log(lRUCache.get(1));    // 返回 1
+        lRUCache.put(3, 3); // 该操作会使得关键字 2 作废，缓存是 {1=1, 3=3}
+        console.log(lRUCache.get(2));    // 返回 -1 (未找到)
+        lRUCache.put(4, 4); // 该操作会使得关键字 1 作废，缓存是 {4=4, 3=3}
+        console.log(lRUCache.get(1));    // 返回 -1 (未找到)
+        console.log(lRUCache.get(3));    // 返回 3
+        console.log(lRUCache.get(4));    // 返回 4
+    </script>
+
+    <script>
+        // //可读性差
+        // LRUCache.prototype.put = function (key, value) {
+        //     if(this.keys.length>=this.capacity ){
+        //         if(this.keys.includes(key)){
+        //             let index = this.keys.indexOf(key);
+        //             this.keys.splice(index,1);
+                   
+        //         }else{
+        //             let lastKey = this.keys.pop();
+        //             this.cache.delete(lastKey);
+                    
+        //         }
+        //     }
+        //         this.keys.unshift(key);
+        //         this.cache.set(key,value);
+        // };
+    </script>
+</body>
+
+</html>

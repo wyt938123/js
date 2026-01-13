@@ -29,6 +29,25 @@
         let list1 = createList(a1);
         let list2 = createList(a2);
 
+        //合并当点节点的链表
+
+        //典型的递归
+        var mergeTwoLists = function(list1, list2) {
+            //注意终止条件
+            if(!list1) return list2;
+            if(!list2) return list1;
+            
+            if(list1.val <= list2.val){
+                list1.next = mergeTwoLists(list1.next, list2);
+                return list1;
+            } else {
+                list2.next = mergeTwoLists(list1, list2.next);
+                return list2;
+            }
+        };
+
+
+
         //最方便的就是创建一个新的节点-合并两个链表
 
 

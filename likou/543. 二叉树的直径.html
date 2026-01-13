@@ -9,29 +9,50 @@
 
 <body>
     <script>
-        var diameterOfBinaryTree = function (root) {
-            if (!root) return 0;
-            let leftlength = root.left ? 1 : 0;
-            let rightlength = root.right ? 1 : 0;
-            // let maxlenleft = 0
-            // let maxlenright = 0
+        // var diameterOfBinaryTree = function (root) {
+        //     if (!root) return 0;
+        //     let leftlength = root.left ? 1 : 0;
+        //     let rightlength = root.right ? 1 : 0;
+        //     // let maxlenleft = 0
+        //     // let maxlenright = 0
 
-            function all(node, length, maxlen) {
-                function depth(node) {
-                    if (!node) return 0;
-                    length++;
-                    maxlen = Math.max(maxlen, length)
-                    let left = depth(node.left)
-                    let right = depth(node.right)
-                    length--;
-                    return;
-                }
-                depth(node)
-                return maxlen;
+        //     function all(node, length, maxlen) {
+
+        //         function depth(node) {
+        //             if (!node) return 0;
+        //             length++;
+        //             maxlen = Math.max(maxlen, length)
+        //             let left = depth(node.left)
+        //             let right = depth(node.right)
+        //             length--;
+        //             return;
+        //         }
+        //         depth(node)
+        //         return maxlen;
+        //     }
+        //     return all(root.left, leftlength, 0) + all(root.right, rightlength, 0) -2
+
+        // };
+
+        //定义depth函数，返回该节点为根的子树的深度
+
+        //首先我们知道一条路径的长度为该路径经过的节点数减一
+        function diameterOfBinaryTree(root) {
+            //先计算经过节点的最大数---注意是节点 ！！！！
+            let maxnodenum = 0;
+
+            function depth(node){
+                if(!node)
+                return 0;
+            let LL = depth(node.left);
+            let RR = depth(node.right);
+            maxnodenum = Math.max(maxnodenum,LL+RR+1);
+            return Math.max(LL,RR)+1;
             }
-            return all(root.left, leftlength, 0) + all(root.right, rightlength, 0) -2
-
-        };
+            depth(root);
+            //最大边数等于节点数减一
+            return maxnodenum -1;
+        }
     </script>
 </body>
 
