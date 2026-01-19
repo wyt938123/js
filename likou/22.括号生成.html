@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+
+<body>
+    <script>
+        //理解括号如何生成的就可以了
+        // 排列  -- >使用index
+        var generateParenthesis = function (n) {
+            let res = []
+            let track = ''
+            function backtrack(startIndex) {
+                if (track.length === 2 * n) {
+                    res.push(track)
+                    return
+                }
+                //+1实现每次从 括号中间开始 因为每次都是一对
+                for (let i = startIndex; i <= track.length; i++) {
+                    // if (i > 0 && track[i] === track[i - 1]) continue
+                    track = `${track.slice(0, i)}()${track.slice(i)}`
+                    console.log(track)
+                    backtrack(i + 1)
+                    track = `${track.slice(0, i)}${track.slice(i + 2)}`
+                }
+            }
+            backtrack(0)
+            return res
+        }
+        console.log(generateParenthesis(3))
+
+
+
+        //完美节，判断都是在剪枝
+        var generateParenthesis2 = function (n) {
+            const res = [];
+
+            const dfs = (lRemain, rRemain, str) => { // 左右括号所剩的数量，str是当前构建的字符串
+                if (str.length == 2 * n) { // 字符串构建完成
+                    res.push(str);           // 加入解集
+                    return;                  // 结束当前递归分支
+                }
+                if (lRemain > 0) {         // 只要左括号有剩，就可以选它，然后继续做选择（递归）
+                    dfs(lRemain - 1, rRemain, str + "(");
+                }
+                if (lRemain < rRemain) {   // 右括号比左括号剩的多，才能选右括号
+                    dfs(lRemain, rRemain - 1, str + ")"); // 然后继续做选择（递归）
+                }
+            };
+
+            dfs(n, n, ""); // 递归的入口，剩余数量都是n，初始字符串是空串
+            return res;
+        };
+    </script>
+</body>
+
+</html>

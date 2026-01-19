@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<body>
+    <script>
+        // 可以实现取重复数，有可以进行排列的原因
+        // startindex 为0时
+        // backtrack(0)  1层
+        // 此时 i = 0
+        // backtrack(0)  2层
+        // 此时 i = 0
+        // backtrack(0)  3层
+        // 此时 i = 0 。。。
+        // 因此可以取重复数  当startIndex为1时 后续都开始从1开始
+        var combinationSum = function(candidates, target) {
+            let res = []
+            let track = []
+            let trackSum = 0
+            function backtrack(startIndex){
+                if(trackSum == target){
+                    res.push(track.slice())
+                    return
+                }
+
+                for(let i = startIndex; i < candidates.length; i++){
+                    // if(candidates[i] > target)
+                    //     return
+                    //导致最后一个满足肯定是等于的
+                    if(trackSum + candidates[i] > target)
+                        continue;
+                    track.push(candidates[i])
+                    trackSum += candidates[i]
+                    backtrack(i)
+                    track.pop()
+                    trackSum -= candidates[i]
+                }
+            }
+            backtrack(0)
+            return res
+        }
+        console.log(combinationSum([2,3,6,7], 7))
+    </script>
+</body>
+</html>

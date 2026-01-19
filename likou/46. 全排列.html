@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<body>
+    <script>
+        //整数是不相同的！
+        var permute = function(nums) {
+            let res = []
+            let track = []
+            let used = new Array(nums.length).fill(false)
+            function backtrack(){
+                
+                console.log(track)
+                if(track.length == nums.length){
+                    res.push(track.slice())
+                    return
+                }
+                for(let i = 0; i < nums.length; i++){
+                    if(!used[i]){
+                    used[i] = true
+                    track.push(nums[i])
+                    backtrack()
+                    track.pop()
+                    used[i] = false
+                    }
+                    
+                }
+            }
+            backtrack(nums, 0)
+            return res
+        }
+        console.log(permute([1,2,3]))
+    </script>
+</body>
+</html>
