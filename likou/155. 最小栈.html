@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+
+<body>
+    <script>
+        var MinStack = function () {
+            this.stack = [];
+            this.MinStack = [];
+        };
+
+        /** 
+         * @param {number} val
+         * @return {void}
+         */
+        MinStack.prototype.push = function (val) {
+            this.stack.push(val)
+            // 应该操作辅助栈 ， 你对主栈进行操作 push了。length！=0
+            // if(this.stack.length === 0||val <= this.MinStack[this.MinStack.length - 1]){
+            //     this.MinStack.push(val)
+            // }
+            if(this.MinStack.length === 0||val <= this.MinStack[this.MinStack.length - 1])
+                this.MinStack.push(val)
+        };
+
+        /**
+         * @return {void}
+         */
+        MinStack.prototype.pop = function () {
+            let t =  this.stack.pop()
+            if(this.MinStack.length && t === this.MinStack[this.MinStack.length - 1])
+                this.MinStack.pop()
+        };
+
+        /**
+         * @return {number}
+         */
+        MinStack.prototype.top = function () {
+            return this.stack[this.stack.length - 1];
+        };
+
+        /**
+         * @return {number}
+         */
+        MinStack.prototype.getMin = function () {
+            if(this.MinStack.length > 0)
+            return this.MinStack[this.MinStack.length - 1];
+        };
+
+        let obj = new MinStack();
+        obj.push(-2);
+        obj.push(0);
+        obj.push(-3);
+        console.log(JSON.parse(JSON.stringify(obj)))
+        console.log(obj.getMin());
+        obj.pop();
+        console.log(obj.top());
+        console.log(obj.getMin());
+    </script>
+</body>
+
+</html>

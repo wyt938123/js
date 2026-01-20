@@ -11,15 +11,34 @@
     <script>
         //按钮按的次数就是深度
         //按钮可以映射一个map
+        console.log("".length)
 
         var letterCombinations = function (digits) {
             let map = ["", "", "abc", "def", "ghi", "jkl", "mno", "pqrs", "tuv", "wxyz"];
             let num = digits.split("");
             let res = [];
-            let path = [];
+            let path = "";
+            //排列的层级可是会一直向下走的，如果不return的话
             function backtracking(startIndex) {
+                // if(startIndex>digits.length)
+                //     return;
+                if (path.length === digits.length) {
+                    res.push(path);
+                    return
+                }
+                let now = map[num[startIndex]];
+
+                for (let i = 0; i < now.length; i++) {
+                    path += now[i];
+                    //下一层
+                    backtracking(startIndex + 1)
+                    path = path.slice(0, -1)
+                }
             }
+            backtracking(0);
+            return res;
         };
+        console.log(letterCombinations("23"));
     </script>
 </body>
 
