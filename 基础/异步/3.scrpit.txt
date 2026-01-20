@@ -1,0 +1,220 @@
+1.script跑太久，为什么会白屏？
+js主线程中，调用栈一直在执行代码，一个任务循环没结束，不进行ui渲染，导致白屏
+
+2、白屏时间过长？如何优化？  如何提升首屏加载速度（两个问题）
+
+整体意思是对的，但说法可以再精确一点。你的原话：
+js主线程中，调用栈一直在执行代码，一个任务循环没结束，不进行ui渲染，导致白屏
+可以理解成：
+JS 在浏览器主线程上跑；
+当前这段 <script>（一次宏任务）一直没执行完；
+浏览器在这段 JS 执行期间不会中途去做 UI 渲染；
+所以首屏迟迟不渲染，看起来就像“白屏”。
+稍微更规范一点的表述建议改成类似这样：
+script 执行时间太长时，JS 主线程的当前宏任务一直在执行，浏览器无法在中途打断 JS 去渲染页面，因此页面长时间不渲染，表现为白屏或卡死。
+也可以简单写在你的笔记里：
+script 跑太久会阻塞主线程，阻塞 UI 渲染，导致白屏。
+如果你愿意，可以把后面“任务循环”那句改成“当前宏任务没结束”会更贴近事件循环的说法。
+
+
+2.」
+webworker
+多去使用微任务执行js
+
+
+思路:减少主线程的任务量
+
+一、白屏时间过长，核心思路
+白屏长，主要就是：首屏阶段主线程太忙，一直在：
+解析 / 执行大段 JS（打包文件很大、逻辑很多）
+做大量同步计算 / 大量 DOM 操作
+导致：在这段时间里浏览器没机会去渲染首屏。典型优化手段可以记在笔记里：
+减小首屏 JS 体积
+[按需加载、路由级代码分割（只加载当前页面必要 JS）
+[非首屏逻辑用 defer / async 脚本、或路由后再加载
+把耗时计算丢给 Web Worker
+适合：排序、大量数据处理、复杂算法等 CPU 密集任务
+主线程只负责：把结果拿回来、更新 DOM，这样首屏渲染不被大计算卡住
+把大任务拆成多个小任务
+而不是一次 for 循环跑几十万次
+可用：setTimeout / setInterval / requestIdleCallback / requestAnimationFrame 把任务切片：
+js
+  function bigTask(items) {
+    function runChunk(i) {
+      const end = Math.min(i + 1000, items.length);
+      for (let j = i; j < end; j++) {
+        // 处理 items[j]
+      }
+      if (end < items.length) {
+        setTimeout(() => runChunk(end), 0); // 让出主线程给渲染
+      }
+    }
+    runChunk(0);
+  }
+给用户先一个“非白屏”
+提前输出骨架屏 / loading
+SSR / 预渲染（静态 HTML）提高首屏
+二、第 21–22 行内容怎么理解 / 修改
+原文：
+text
+21 → webworker
+22 → 多去使用微任务执行js
+1. 关于 Web Worker（第 21 行）
+这条可以保留，但建议写得更明确一点，比如：
+复杂、耗时的计算（CPU 密集型）尽量放在 Web Worker 中执行，避免阻塞主线程和 UI 渲染。
+这样就直接指向“减轻主线程压力 → 减少白屏”。
+2. 关于“多使用微任务执行 JS”（第 22 行）
+这一条建议不太准确，原因：
+微任务仍然在主线程执行，不是在后台线程；
+更重要：每次宏任务结束后，浏览器会先把所有微任务执行完，再去渲染；
+如果你在微任务里塞了一大堆计算，反而会让“渲染再等等”，结果还是卡、甚至更难排查。
+微任务适合的场景是：
+很短、收尾性质的逻辑（比如 Promise.then 里的状态同步）
+对时序要求比较高，但执行时间非常短
+不适合用来“多做活”，更不适合作为“优化白屏”的通用手段。更合理的改法，可以写类似：
+避免在微任务里执行大量耗时计算，否则会阻塞渲染；长任务用分片（setTimeout 等）或 Web Worker 处理。
+如果你想保留“微任务”这个点，可以写成：
+微任务适合同步后的一些短小收尾逻辑，不应用来承载大量耗时代码。
+
+
+
+
+
+ 3.这是指打包时进行分割，已经路由懒加载吗？2.在vue等框架下如何添加defer呢？不是打包过来后用一个scrpit加载代码吗？详细介绍一下，defer / async 脚本的作用
+
+ 一、33 行：按需加载 / 路由级代码分割，说的是什么？
+33 → 按需加载、路由级代码分割（只加载当前页面必要 JS）
+可以理解成就是你说的那两个：
+打包时代码分割（code splitting）
+把原来一个巨大的 bundle.js，拆成多个更小的 chunk：
+home.[hash].js
+about.[hash].js
+……
+当前页面只下载/执行它真正需要的那几个 chunk。
+路由懒加载（route-level lazy loading）
+典型写法（Vue 举例）：
+js
+  const routes = [
+    {
+      path: '/about',
+      component: () => import('@/views/About.vue') // 动态 import，生成独立 chunk
+    }
+  ]
+- 这样：
+首屏只加载当前路由对应的 JS；
+访问 /about 时，才去网络请求 About.xxx.js 这个 chunk。
+所以：33 行确实就是在说“打包阶段做代码分割 + 路由懒加载”，目的就是减小首屏要执行的 JS 量，从源头减轻“script 时间过长导致白屏”的问题。
+二、34 行：在 Vue 这类框架里，怎么用 defer？
+“不是打包过来后用一个 script 加载代码吗？”
+是的，SPA 一般最终是：
+html
+<script src="/assets/index.abc123.js"></script>
+或者（Vite / 现代构建工具）：
+html
+<script type="module" src="/src/main.js"></script>
+这个 script 标签本身就可以加 defer / async（或者用 type="module"，天然类似 defer 行为）。
+1. 在 Vue 项目里通常在哪里改？
+看你用什么工具：
+Vue CLI / Webpack 项目
+有一个 public/index.html 模板：
+html
+  <!DOCTYPE html>
+  <html lang="">
+    <head>
+      <!-- ... -->
+    </head>
+    <body>
+      <div id="app"></div>
+      <!-- 这里最终会被 HtmlWebpackPlugin 注入打包后的 script -->
+    </body>
+  </html>
+- 默认注入出来大概是：
+html
+  <script src="/js/chunk-vendors.xxx.js"></script>
+  <script src="/js/app.xxx.js"></script>
+- 想用 defer 有两种方式：
+配置 HtmlWebpackPlugin：scriptLoading: 'defer'（需要在 webpack 配置里改）
+或者对一些额外自己加的 <script>（CDN、第三方）手动写 defer/async。
+Vite + Vue 项目
+入口 index.html 通常是：
+html
+  <script type="module" src="/src/main.js"></script>
+- 这里用的是 type="module"，ES module 脚本天生就类似 defer：
+下载与 HTML 解析并行；
+等 HTML 解析完再执行；
+不阻塞 HTML 解析。
+所以 Vite 项目里，其实你已经默认有 “defer 效果” 了。
+结论：
+SPA 场景下，确实是“打包成（少量）script 标签”，但这些 script 仍然可以通过属性控制行为：
+原始 <script>：可以选择加 defer / async；
+<script type="module">：默认就像 defer。
+而真正影响白屏的大头，更多还是你前面说的“代码分割 + 路由懒加载”，而不是单纯给 script 加不加一个 defer。
+三、defer / async 的作用和区别（详细一点）
+先假设都写在 <head> 里，方便理解对“阻塞”的影响。
+1. 不带任何属性的 <script>
+html
+<head>
+  <script src="a.js"></script>
+  <script src="b.js"></script>
+</head>
+行为：
+浏览器解析 HTML 遇到 a.js：
+停下解析 → 下载 a.js（如果还没缓存）→ 立即执行 a.js；
+执行完再继续解析 HTML。
+遇到 b.js 再重复一次。
+所以：
+会阻塞 HTML 解析；
+执行顺序 = 文档中的顺序；
+首屏如果脚本大，就容易卡、白屏。
+2. async：不阻塞解析，但执行时机不确定，顺序不保证
+html
+<head>
+  <script async src="a.js"></script>
+  <script async src="b.js"></script>
+</head>
+行为：
+HTML 解析继续往后走，不等待脚本；
+脚本在后台并行下载；
+哪个脚本先下载完，就先暂停解析，立刻执行它；
+然后继续解析 HTML。
+特点：
+不阻塞 HTML 解析（减轻白屏）；
+执行顺序不保证：
+可能 b.js 比 a.js 先执行；
+不适合有强依赖（例如 b.js 依赖 a.js 先执行）。
+和 DOM 事件的关系：
+DOMContentLoaded 事件不会等待 async 脚本；
+async 脚本可能在 DOMContentLoaded 前或后执行，时间不确定。
+适用场景：
+独立、不依赖其他脚本、不操作 DOM 的脚本：
+埋点、广告、统计、第三方 SDK 等。
+3. defer：不阻塞解析，按顺序、在 DOM 解析完之后执行
+html
+<head>
+  <script defer src="a.js"></script>
+  <script defer src="b.js"></script>
+</head>
+行为：
+HTML 解析继续往后走，不阻塞；
+a.js、b.js 后台并行下载；
+等整份 HTML 解析完成后，再按声明顺序执行：
+先执行 a.js
+再执行 b.js
+和 DOM 事件的关系：
+它们会在 DOMContentLoaded 之前执行完；
+所以在 defer 脚本里可以放心使用 document.querySelector 去操作 DOM。
+适用场景：
+依赖 DOM，但不希望阻塞解析的脚本；
+有执行顺序要求的脚本（比如先加载库，再加载业务代码）。
+4. type="module"：可以类比为带依赖的“高级 defer”
+html
+<script type="module" src="main.js"></script>
+关键点：
+行为基本和 defer 一致：
+下载与 HTML 解析并行；
+等 DOM 解析完再执行；
+不阻塞解析。
+还支持：
+import / export；
+动态 import()（配合打包工具就是代码分割 / 懒加载）。
+现代框架（Vue + Vite 等）一般直接用这个，等于同时解决：模块化 + 不阻塞解析。

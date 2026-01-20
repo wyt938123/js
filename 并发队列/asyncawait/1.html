@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<body>
+    <script>
+        function async2(){
+            console.log('async2');
+        }
+        const f = ['a', 'b', 'c'];
+        async function async1() {
+            console.log('async1 start');
+            return new Promise(async (resolve) => {
+                for await (const i of f) {
+                    setTimeout(() => {
+                        console.log(f);
+                    }, 1000);
+                }
+                await setTimeout(() => {
+                    async2();
+                }, 2000);
+                //直接成同步代码了，如果没有promise，因为直接promise.resolve(fun)了
+                await (()=>{
+                    console.log('awaiting...');
+                })();
+            console.log('async1 end');
+            });
+        }
+        async1();
+    </script>
+</body>
+</html>

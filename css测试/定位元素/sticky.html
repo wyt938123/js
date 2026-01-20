@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    /* 撑开页面高度，方便测试滚动 */
+    .content {
+      height: 2000px;
+      padding-top: 100px;
+    }
+    /* 生效的粘性定位 */
+    .sticky-nav {
+      position: sticky;
+      top: 0; /* 必须设置：滚动到顶部时粘住 */
+      height: 50px;
+      background: #ff7f50;
+      color: white;
+      line-height: 50px;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div class="content">
+    <div class="sticky-nav">我是粘性导航（滚动页面看效果）</div>
+    <p>往下滚动，导航会粘在顶部</p>
+    <p>继续滚动...</p>
+  </div>
+</body>
+</html>

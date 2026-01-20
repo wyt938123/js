@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+
+<body>
+    <script>
+        var exist = function (board, word) {
+            let rows = board.length;
+            let cols = board[0].length;
+            let str = "";
+           function backtracking(rw, cl){
+                for (let i = rw; i < rows; i++) {
+                    for (let j = cl; j < cols; j++) {
+                        str += board[i][j];
+                if (str === word) return true;
+
+                        console.log(str);
+                        backtracking(i, j+1); //这样才是横向走，否则是纵向走，横向可以重复
+                        str = str.slice(0, -1);
+                    }
+                }
+                return false;
+            }
+           return backtracking(0, 0);
+        };
+
+        board = [['A','B','C','E'],['S','F','C','S'],['A','D','E','E']], word = "SEE"
+        console.log(exist(board, word));
+    </script>
+</body>
+
+</html>

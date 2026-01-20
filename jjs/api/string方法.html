@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+
+<body>
+    <script>
+        //({ toString: () => "abc", repeat: String.prototype.repeat }).repeat(2);
+
+
+        //         1. 为什么有些方法会调用 this.toString()
+        // JavaScript 的字符串原型方法（如 String.prototype.*）的设计初衷是为字符串原始值服务的。当你在一个非字符串对象上调用这些方法时，引擎会先执行 “抽象操作 ToString”，把 this 转换为字符串，这个过程通常会调用 this.toString()。
+        //
+        //let a = Number(1).repeat(10) 不行
+
+        // 字符串内容才能重复。
+        // slice(start, end)、substring(start, end)：需要原字符串来截取子串。
+        // indexOf(searchValue)、includes(searchString)：需要原字符串来查找内容。
+        // toUpperCase()、toLowerCase()：需要原字符串来转换大小写。
+        // concat(str)：需要原字符串来拼接。
+        // 不会触发的方法
+        // 这些方法不依赖字符串的实际内容，或只操作字符串的元信息：
+        // charAt(index)：会先把 this 转为字符串，但如果 this 是对象，会调用 this.toString()。
+        // length（虽然是属性不是方法）：会把 this 转为字符串再取长度。
+        // valueOf()：返回原始字符串值，若 this 是对象，会调用 this.valueOf() 而非 toString()。
+        // 3. 关键原理：抽象操作 ToString
+        // JavaScript 引擎在处理字符串方法时，会执行抽象操作 ToString，这个操作的规则是：
+        // 如果 this 是原始值（如字符串、数字），直接使用。
+        // 如果 this 是对象，会调用 this.toString()，如果返回的不是原始值，再尝试 this.valueOf()，若都失败则抛出错误。
+        let a = String.prototype.repeat.call(1, 10); // "1111111111"
+        //call 方法会先对原始值 1 进行装箱（boxing），也就是把它包装成一个 Number 对象。
+        console.log(a);s
+    </script>
+</body>
+
+</html>

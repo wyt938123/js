@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+
+<body>
+    <script>
+        function isPalindrome(str) {
+            return str === str.split('').reverse().join('');
+        }
+
+        // 排列  切割到底就是结束  s.slice(i) 必须是startindex  ，i的话会一起变化
+         var partition = function (s) {
+            let res = [];
+            let path = [];
+            function backtrack(startIndex) {
+                if (startIndex === s.length) {
+                    res.push([...path]);
+                    return;
+                }
+                for (let i = startIndex; i < s.length; i++){
+                    if (isPalindrome(s.slice(startIndex, i + 1))) {
+                        path.push(s.slice(startIndex, i + 1));
+                        backtrack(i + 1);
+                        path.pop();
+                    }
+                }
+            }
+            backtrack(0);
+            return res;
+        };
+        console.log(partition("aab"));
+    </script>
+</body>
+
+</html>

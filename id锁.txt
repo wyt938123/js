@@ -1,0 +1,131 @@
+场景：同时请求3个广告位
+typescript
+// 假设服务器配置了3个广告位ID
+storeyData = [
+  {
+    platform_list: [{
+      adid_list: [
+        { adUnitId: "ad001", price: 10 },
+        { adUnitId: "ad002", price: 15 },
+        { adUnitId: "ad003", price: 12 }
+      ]
+    }]
+  }
+];
+
+
+
+T0: 启动广告请求 loadAd()
+    ↓
+    adUnitIdLockList = {} (空)
+
+T1: parallelLoad() 开始
+    ↓
+    过滤锁定广告位：ad001 ❌未锁定 ✅可用
+                    ad002 ❌未锁定 ✅可用
+                    ad003 ❌未锁定 ✅可用
+    ↓
+    并行请求 [ad001, ad002, ad003]
+
+T2: ad001 开始请求
+    ↓
+    🔒 adUnitIdLockList.set("ad001", 1)
+    adUnitIdLockList = { "ad001": 1 }
+
+T3: ad002 开始请求
+    ↓
+    🔒 adUnitIdLockList.set("ad002", 1)
+    adUnitIdLockList = { "ad001": 1, "ad002": 1 }
+
+T4: ad003 开始请求
+    ↓
+    🔒 adUnitIdLockList.set("ad003", 1)
+    adUnitIdLockList = { "ad001": 1, "ad002": 1, "ad003": 1 }
+
+T5: ad002 加载成功，入池
+    ↓
+    广告对象进入 adRVCacheList
+    ⚠️ 注意：此时不解锁！保持锁定状态
+
+T6: 用户调用 getAd() 取出广告
+    ↓
+    从池中取出 ad002 广告对象
+    ↓
+    展示广告
+    ↓
+    广告关闭后调用 unLockAdUnitId("ad002")
+    ↓
+    🔓 adUnitIdLockList.delete("ad002")
+    adUnitIdLockList = { "ad001": 1, "ad003": 1 }
+
+T7: 再次调用 loadAd() 补充广告
+    ↓
+    parallelLoad() 过滤：
+    ad001 ❌已锁定 🚫跳过
+    ad002 ✅未锁定 ✅可用（已解锁可再次请求）
+    ad003 ❌已锁定 🚫跳过
+    ↓
+    只请求 [ad002]
+
+
+    🎯 锁机制的作用
+1️⃣ 防止重复请求
+typescript
+// ❌ 没有锁机制的后果
+loadAd() → 请求 ad001
+         → 请求 ad001  (重复！浪费资源)
+         → 请求 ad001  (重复！)
+
+// ✅ 有锁机制
+loadAd() → 请求 ad001 → 🔒锁定
+         → 过滤 ad001 (已锁定，跳过)
+2️⃣ 保护正在使用的广告
+typescript
+// 广告在缓存池中时保持锁定
+adRVCacheList = [
+  { adUnitId: "ad001", ad: {...} }  // 🔒 ad001 保持锁定
+]
+
+// 直到广告展示完毕才解锁
+videoAd.ad.onClose(() => {
+  unLockAdUnitId("ad001");  // 🔓 释放，可再次请求
+});
+3️⃣ 避免并发冲突
+typescript
+// 第一轮请求
+loadAd() → 并行请求 [ad001, ad002, ad003] → 全部🔒
+
+// 第二轮请求（第一轮未完成时）
+loadAd() → 过滤所有已锁定 → 🚫无广告位可请求 → 避免冲突
+🔍 实际调试示例
+假设你在控制台看到这样的日志：
+javascript
+[parallelLoad][adQueue] [
+  [ 
+    { adUnitId: "123", price: 10 },  // ✅ 未锁定，会请求
+    { adUnitId: "456", price: 15 }   // ✅ 未锁定，会请求
+    // adUnitId "789" 已锁定被过滤
+  ]
+]
+
+[loadRewardedVideoAd] adUnitId: 123  // 🔒 锁定
+[loadRewardedVideoAd] adUnitId: 456  // 🔒 锁定
+
+[enterThePool] ECPM: 15  // ad456 入池
+[getAd] 取出广告 ad456
+[adclose][end]           // 广告关闭
+[unLockAdUnitId] 789     // 🔓 解锁
+
+[parallelLoad][adQueue] [
+  [ 
+    { adUnitId: "789", price: 12 }   // ✅ 已解锁，可再次请求
+    // 123, 456 仍在使用中被过滤
+  ]
+]
+💡 设计精髓
+时机	操作	目的
+请求开始	🔒 set(adUnitId, 1)	标记"正在处理"
+加载成功/失败但未入池	🔓 delete(adUnitId)	允许重试
+入池成功	⏳ 保持锁定	保护缓存中的广告
+展示完毕	🔓 delete(adUnitId)	释放资源
+这个锁机制确保了每个广告位在同一时刻只有一个"活跃"的请求/对象，避免了资源浪费和状态混乱！

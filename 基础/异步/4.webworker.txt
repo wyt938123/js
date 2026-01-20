@@ -1,0 +1,84 @@
+1.如何做多线程？
+2.浏览器能干的，webworker哪些能干，哪些不能？
+3.线程间通信
+
+
+1. “如何做多线程？”——在浏览器里，就是用 Web Worker
+JS 本身还是单线程执行，但浏览器提供了 Web Worker 这类“后台线程”帮你跑 JS：
+主线程：负责 UI、DOM、事件、少量逻辑。
+Worker 线程：负责耗时计算 / 大量循环 / 数据处理等，不能直接动 DOM。
+基本用法示例（最常见：Dedicated Worker）：1）主线程（页面里的 JS）：
+js
+// main.js
+const worker = new Worker('./worker.js');
+
+worker.postMessage({ n: 100000000 }); // 把任务参数丢给 worker
+
+worker.onmessage = (e) => {
+  console.log('计算结果:', e.data);
+};
+2）worker 线程（worker.js）：
+js
+// worker.js
+self.onmessage = (e) => {
+  const { n } = e.data;
+  let sum = 0;
+  for (let i = 0; i < n; i++) {
+    sum += i;
+  }
+  self.postMessage(sum); // 把结果发回主线程
+};
+关键点：
+多线程 = 主线程 + 一个或多个 Worker 线程；
+线程之间通过 postMessage 互相发消息，数据是复制或结构化克隆；
+这样耗时计算不会卡住主线程，也就不会长时间白屏。
+（高级一点，还有 SharedWorker、Service Worker 等，但入门先把 Dedicated Worker 理解清楚就够了。）
+2. “浏览器能干的，Web Worker 哪些能干，哪些不能？”
+可以直接在笔记里分成两栏：能用的 API / 不能用的 API。
+2.1 Web Worker 里能干什么？
+大致可以记为：适合“纯计算 + 少量异步 I/O”，不涉及 UI常见可用能力（不同浏览器略有差异，但主流都支持）：
+JS 语言本身：Number、Array、Map、Set、JSON、Promise 等等
+定时器：setTimeout / setInterval
+网络请求：
+现代浏览器：fetch
+一些环境里：XMLHttpRequest（看兼容性）
+数据存储：
+IndexedDB
+加密 / 解密：
+crypto.subtle（Web Crypto API，大部分现代浏览器支持）
+自己导入脚本：
+importScripts('other.js')
+模块化（部分环境）：import（Module Worker）
+总体原则：不依赖 DOM 的那一套逻辑，很多都能在 Worker 里跑。
+2.2 Web Worker 里不能干什么？
+记住一句：Worker 没有 window / document / DOM / 大部分 BOM。典型“不能用 / 不该用”的：
+不能访问 DOM
+不能用 document、window、document.querySelector 等；
+不能操作元素、不能改样式、不能监听点击。
+不能用传统的 UI 相关 API
+alert / confirm / prompt 都没有；
+也没有 window.open 等窗口操作。
+不能直接访问同步的 Web API
+比如 localStorage（它是同步 API，可能阻塞主线程）；
+要存数据，用 IndexedDB。
+不能直接操作主线程的事件（点击、滚动等），这些都在主线程监听，然后把数据通过 postMessage 传给 Worker 处理。
+
+
+
+
+
+3 → 线程间通信
+
+  1）消息传递 postMessage（最常用）
+     - 主线程和 worker 都有 postMessage / onmessage
+     - 数据通过“结构化克隆”复制，不共享同一对象
+     - 适合大多数业务场景：把参数发过去，收到结果再更新 UI
+
+  2）Transferable 对象（ArrayBuffer / ImageBitmap / MessagePort）
+     - postMessage(value, [transferList])
+     - 不复制内存，只转移所有权，适合大数据（图片、音视频缓冲区）
+
+  3）共享内存 SharedArrayBuffer + Atomics（高级）
+     - 多个线程访问同一块内存
+     - 用 Atomics 保证原子读写、防止数据竞争
+     - 需要浏览器安全配置，主要用于高性能场景（WASM、音视频、引擎）
