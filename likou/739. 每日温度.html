@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<body>
+    <script>
+        var dailyTemperatures = function(temperatures) {
+            let stack = []
+            let maxnumber = new Array(temperatures.length).fill(0)
+            for(let i=temperatures.length-1;i>=0;i--){
+                while(stack.length&&temperatures[i]>=temperatures[stack[stack.length-1]]){
+                    stack.pop()
+                }
+                maxnumber[i]=stack.length?stack[stack.length-1]-i:0
+                stack.push(i)
+            }
+            return maxnumber
+        };
+        console.log(dailyTemperatures([73,74,75,71,69,72,76,73]))
+    </script>
+</body>
+</html>

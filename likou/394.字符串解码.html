@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<body>
+    <script>
+        // console.log(Number('0xa'))
+        //1.出现 123 这种情况
+        //2.出现abc123 这种情况
+        //字符串也是可以直接变量啊！！！
+
+        var decodeString = function(s) {
+            let stack = [];
+            let numstack = [''];         //abc开始的话，那么就出现了空的情况，而且加个'’也可以让最后的数组结果拼接到这个'''
+            let cur =0;
+            for(let i=0;i<s.length;i++){
+                console.log(stack,numstack)
+                if(!isNaN(s[i])){
+                    cur=cur*10+Number(s[i])
+                }
+                else if(s[i] === '['){
+                    stack.push(cur)
+                    numstack.push('')
+                    cur=0
+                }
+                else if(s[i] === ']'){
+                   let temp = numstack.pop().repeat(stack.pop())
+                    numstack[numstack.length-1]+=temp
+                }else{
+                    numstack[numstack.length-1]+=s[i]
+                }
+            }
+            return numstack[0]
+};
+
+
+
+
+
+
+
+
+
+//         var decodeString = function(s) {
+//             let stack = [];
+//             let numstack = [];
+//             let str = s.split('');
+//             for(let i=0;i<str.length;i++){
+//                 console.log(stack,numstack)
+//                 if(Number(str[i]).toString() !== 'NaN'){
+//                     stack.push(str[i])
+//                 }
+//                 else if(str[i] === '['){
+//                     numstack.push('')
+//                 }
+//                 else if(str[i] === ']'){
+//                    let temp = numstack.pop().repeat(stack.pop())
+//                     numstack[numstack.length-1].concat(temp)
+//                 }else{
+//                     numstack[numstack.length-1].concat(str[i])
+//                 }
+//             }
+// };
+console.log(decodeString('3[a2[c]]'))
+    </script>
+</body>
+</html>
