@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<body>
+    <script>
+        //放弃负面影响
+        var maxSubArray = function(nums) {
+            let max  =nums[0];
+            let sum = nums[0];
+            for(let i=1;i<nums.length;i++){
+                if(sum<0&&nums[i]>0){
+                    sum = nums[i];
+                    max = Math.max(max,sum);
+                }
+                else if(sum>0){
+                    sum += nums[i];
+                    max = Math.max(max,sum);
+                }
+                // console.log(sum,max)
+            }
+            return max;
+
+};
+console.log(maxSubArray([-2,1,-3,4,-1,2,1,-5,4]))
+    </script>
+</body>
+</html>
