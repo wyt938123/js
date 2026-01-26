@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<body>
+    <script>
+        const arr = [null, undefined, {a: 1}, [1,2,3]]
+
+        function getHapKeysValue(value) {
+            return Object.assign(...value.filter(ref=>!!ref))
+        }
+        console.log(getHapKeysValue(arr))
+    </script>
+</body>
+</html>

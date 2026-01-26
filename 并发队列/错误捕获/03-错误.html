@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<body>
+    <script>
+        async function queryStoreList() {
+  let data = [] as IShop[];
+  try {
+    // 1. 发起异步 HTTP 请求
+    const { code, context, message } = await Http.get<IShop[]>(`${baseUrl}/my-shops`, {});
+    
+    // 2. 检查业务状态码
+    if (code !== EResponseCode.Succeed) {
+      // 业务错误：主动抛出 Error，会被下面的 catch 捕获
+      throw new Error(message || '服务器异常，请稍后再试~');
+    }
+    
+    // 3. 业务成功：给 data 赋值
+    data = context || [] as IShop[];
+  } catch (error) {
+    // 4. 捕获所有错误（网络错误、业务错误、同步错误）
+    throw new Error(getHttpErrorMessage(error));
+  }
+  return data;
+}
+
+
+async function fetchStoreList() {
+  try {
+    // 1. 调用底层的异步函数
+    const res = await queryStoreList();
+    
+    // 2. 处理成功返回的数据
+    shops.value = res.map((item) => ({
+      text: item.shopName,
+      value: item.shopId,
+    }));
+  } catch (error) {
+    // 3. 捕获底层函数抛出的所有错误
+    console.log(error);
+  }
+}
+    </script>
+</body>
+</html>

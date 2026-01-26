@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+
+<body>
+    <script>
+        const _hapDataKesArray = [
+            "clickid",
+            "callback",
+            "bd_vid",
+            "qz_gdt",
+            "gdt_vid",
+            "content_id",
+            "tracking_enabled",
+            "clue_token",
+            "callback_url",
+            "mgc_cb",
+            "pageId",
+            "tid",
+            "requestid",
+            "sid",
+            "logExtra",
+            "adid",
+            "mediumType",
+            "mid3",
+            "episode",
+        ];
+
+
+        function getHapKeysValue(value) {
+            try {
+                if (Object.prototype.toString.call(value) == "[object Array]") {
+                    return value[0].replace(/^['"]/, "").replace(/['"]$/, "");
+                } else if (value.includes("[")) {
+                    let resultVal = value.split(",")[0];
+                    return resultVal
+                        .replace("[", "")
+                        .replace(/^['"]/, "")
+                        .replace(/['"]$/, "");
+                } else {
+                    return value.replace(/^['"]/, "").replace(/['"]$/, "");
+                }
+            } catch (err) {
+                return value;
+            }
+        }
+
+        getHapKeysValue(_hapDataKesArray);
+
+        console.log(getHapKeysValue(_hapDataKesArray));
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+
+<body>
+    <script>
+        //满足异步条件后队列开启
+        class ReportManager {
+            private readyPromise: Promise<void>;
+            private resolveReady: () => void;
+
+            constructor() {
+                // 初始化一个pending状态的Promise，保存resolve函数
+                this.readyPromise = new Promise(resolve => {
+                    this.resolveReady = resolve;
+                });
+            }
+
+            // 模拟初始化完成的回调
+            public onInitialized() {
+                console.log('✅ 初始化完成，开始执行所有上报请求');
+                this.resolveReady();
+            }
+
+            // 实际的上报逻辑
+            private reportData(config: { id: number; msg: string }) {
+                console.log(`📤 上报数据: ${JSON.stringify(config)}`);
+            }
+
+            // 对外暴露的上报方法
+            public async report(config: { id: number; msg: string }) {
+                console.log(`⏳ 等待初始化: 上报请求${config.id}已排队`);
+                await this.readyPromise; // 阻塞，直到初始化完成
+                this.reportData(config);
+            }
+        }
+
+        // 测试代码
+        const manager = new ReportManager();
+
+        // 模拟多次调用report（此时还未初始化）
+        manager.report({ id: 1, msg: '第一个上报请求' });
+        manager.report({ id: 2, msg: '第二个上报请求' });
+        manager.report({ id: 3, msg: '第三个上报请求' });
+
+        // 模拟延迟初始化（比如2秒后ext_field_14准备好）
+        setTimeout(() => {
+            manager.onInitialized();
+        }, 2000);
+    </script>
+</body>
+
+</html>
