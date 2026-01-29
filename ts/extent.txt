@@ -1,0 +1,137 @@
+# 核心作用是实现类型的继承与约束，根据使用场景可分为接口 / 类继承、泛型约束、条件类型判断三大核心用法，同时还有元组推断这一高频扩展用法，覆盖了类型复用、类型安全限制、动态类型推导等核心场景
+
+## 接口 / 类继承：实现类型复用与扩展
+这是 extends 最基础的用法，用于让一个接口 / 类继承另一个（或多个）接口 / 类的成员，实现类型属性、方法的复用，同时支持在子类 / 子接口中扩展新成员，是实现 TypeScript 面向对象类型体系的核心。s
+
+- 1. 接口继承（支持多继承）
+接口可通过 extends 继承单个或多个接口，直接复用父接口的所有属性 / 方法类型，子接口可新增专属成员：
+typescript
+运行
+// 父接口：基础用户类型
+interface BaseUser {
+  id: number;
+  name: string;
+}
+
+// 子接口：继承BaseUser并扩展
+interface User extends BaseUser {
+  age: number; // 新增属性
+  sayHi: () => void; // 新增方法
+}
+
+// 使用：必须包含父接口+子接口的所有成员
+const user: User = {
+  id: 1,
+  name: "张三",
+  age: 20,
+  sayHi: () => console.log("Hi")
+};
+多继承示例（用逗号分隔多个父接口）：
+typescript
+运行
+interface CanRun { run: () => void; }
+interface CanJump { jump: () => void; }
+// 同时继承两个接口
+interface Animal extends CanRun, CanJump { name: string; }
+2. 类继承（单继承，可实现多接口）
+类通过 extends 实现单继承（继承另一个类的属性和方法），结合 implements 可实现多个接口（约束类的结构），子类可重写父类方法或扩展新成员：
+typescript
+运行
+// 父类
+class Person {
+  name: string;
+  constructor(name: string) {
+    this.name = name;
+  }
+  eat() {
+    console.log(`${this.name}在吃饭`);
+  }
+}
+
+// 子类：继承Person
+class Student extends Person {
+  studentId: number;
+  constructor(name: string, studentId: number) {
+    super(name); // 调用父类构造函数
+    this.studentId = studentId;
+  }
+  // 重写父类方法
+  eat() {
+    console.log(`${this.name}(学号:${this.studentId})在食堂吃饭`);
+  }
+  // 新增方法
+  study() {
+    console.log(`${this.name}在学习`);
+  }
+}
+
+const stu = new Student("李四", 1001);
+stu.eat(); // 李四(学号:1001)在食堂吃饭
+stu.study(); // 李四在学习
+
+## 二、泛型约束：限制泛型的类型范围
+在泛型中，extends 用于约束泛型参数的可选类型范围，确保泛型只能接收符合约束条件的类型，避免传入不合法类型导致类型错误，是提升泛型类型安全性的关键。
+核心语法：function fn<T extends 约束类型>(arg: T): T { ... }
+约束类型可以是基础类型、接口、类、联合类型等
+泛型 T 必须是「约束类型」的子类型（或自身）
+示例 1：约束泛型为包含指定属性的类型
+typescript
+运行
+// 约束T必须包含id（number类型）和name（string类型）属性
+function printUser<T extends { id: number; name: string }>(user: T) {
+  console.log(`ID:${user.id}, 姓名:${user.name}`);
+}
+
+// 合法：符合约束
+printUser({ id: 1, name: "张三", age: 20 });
+// 非法：缺少id属性，TS编译报错
+printUser({ name: "李四", age: 21 });
+示例 2：约束泛型为基础类型子集
+typescript
+运行
+// 约束T只能是string或number类型
+function format<T extends string | number>(value: T): string {
+  return value.toString();
+}
+
+format("hello"); // 合法
+format(123); // 合法
+format(true); // 非法，boolean不符合约束，编译报错
+
+
+
+## 三、条件类型判断：实现动态类型推导
+extends 用于条件类型（TypeScript 2.8+ 新增），实现「类型层面的三元运算」，根据一个类型是否是另一个类型的子类型，动态推导最终的类型。
+核心语法：T extends U ? TrueType : FalseType
+含义：如果类型 T 是类型 U 的子类型，则最终类型为 TrueType，否则为 FalseType
+常用于工具类型封装、复杂类型推导，是实现 TypeScript 高级类型的基础
+基础示例
+typescript
+运行
+// 定义条件类型：判断T是否为string类型
+type IsString<T> = T extends string ? "yes" : "no";
+
+// 推导结果："yes"（string是string的子类型）
+type A = IsString<string>;
+// 推导结果："no"（number不是string的子类型）
+type B = IsString<number>;
+// 推导结果："no"（boolean不是string的子类型）
+type C = IsString<boolean>;
+实用示例：封装工具类型（提取函数返回值类型）
+TypeScript 内置的 ReturnType<T> 工具类型，底层就是通过 extends 条件类型实现的，核心逻辑是判断 T 是否为函数类型，若是则提取其返回值类型：
+typescript
+运行
+// 手动实现ReturnType：提取函数的返回值类型
+type MyReturnType<T> = T extends (...args: any[]) => infer R ? R : never;
+
+// 测试：函数返回值为string
+type Fn1 = () => string;
+type R1 = MyReturnType<Fn1>; // R1 = string
+
+// 测试：函数返回值为number[]
+type Fn2 = (a: number, b: string) => number[];
+type R2 = MyReturnType<Fn2>; // R2 = number[]
+
+// 测试：非函数类型，返回never
+type R3 = MyReturnType<string>; // R3 = never
+（注：infer 是配合条件类型的关键字，用于推断并提取类型中的部分成员）

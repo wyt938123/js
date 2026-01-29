@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+
+<body>
+    <script>
+       
+        const appInitAop = (options) => {
+            // onInit proxy handler
+            const initHandler = {
+                apply: function (target, thisArg, argumentsList) {
+                    console.log(
+                        '[aop][init] target:{} thisArg:{} argumentsList:{}',
+                        target,
+                        thisArg,
+                        argumentsList
+                    )
+
+                    const hookFn = thisArg['onInitApp']
+                    // TODO: 满足了生命周期自身条件，差 isAppInit 值的条件
+                    // if (hookFn && 'function' === typeof hookFn) {
+                    //   hookFn.apply(thisArg, argumentsList)
+                    // }
+
+                    console.log($appInitService.getAppInit(), '-------------[aop][onInit] getAppInit')
+
+                    if ($appInitService.getAppInit()) {
+                        if (hookFn && 'function' === typeof hookFn) {
+                            hookFn.apply(thisArg, argumentsList)
+                        }
+                    } else {
+                        $appInitService.subscribeFns('appInit', () => {
+                            console.log('hookFn-----------', hookFn)
+                            if (hookFn && 'function' === typeof hookFn) {
+                                console.log('hookFncccccccc==========')
+                                hookFn.apply(thisArg, argumentsList)
+                            }
+                        })
+                    }
+
+                    return target.apply(thisArg, argumentsList)
+                },
+            }
+
+            // onShow proxy handler
+            const showHandler = {
+                apply: function (target, thisArg, argumentsList) {
+                    console.log(
+                        '[aop][show] target:{} thisArg:{} argumentsList:{}',
+                        target,
+                        thisArg,
+                        argumentsList
+                    )
+
+                    const hookFn = thisArg['onShowApp']
+                    // TODO: 满足了生命周期自身条件，差 isAppInit 值的条件
+                    // if (hookFn && 'function' === typeof hookFn) {
+                    //   hookFn.apply(thisArg, argumentsList)
+                    // }
+
+                    console.log($appInitService.getAppInit(), '-------------[aop][onShow] getAppInit')
+
+                    if ($appInitService.getAppInit()) {
+                        if (hookFn && 'function' === typeof hookFn) {
+                            hookFn.apply(thisArg, argumentsList)
+                        }
+                    } else {
+                        $appInitService.subscribeFns('appInit', () => {
+                            if (hookFn && 'function' === typeof hookFn) {
+                                hookFn.apply(thisArg, argumentsList)
+                            }
+                        })
+                    }
+
+                    return target.apply(thisArg, argumentsList)
+                },
+            }
+
+            // 挂载 proxy
+            options.onInit = new Proxy(options.onInit, initHandler)
+            options.onShow = new Proxy(options.onShow, showHandler)
+
+            return { ...options }
+        }
+
+        export default appInitAop
+
+    </script>
+</body>
+
+</html>

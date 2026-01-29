@@ -1,0 +1,218 @@
+infer 是 TypeScript 中配合条件类型（T extends U ? X : Y）使用的专属关键字，核心作用是在类型判断的过程中，动态推断并提取目标类型的某一部分子类型，并将其绑定到一个临时的类型变量中，供后续类型逻辑使用。
+简单来说：infer 让 TypeScript 拥有了「类型层面的变量声明与提取能力」，能从复杂类型（如函数、元组、类、联合类型等）中 “抠出” 我们需要的局部类型，是实现 TypeScript 高级类型、内置工具类型的核心基础。
+一、核心基础规则（必记）
+infer 有严格的使用限制，违背则会直接报编译错误，核心规则共 3 条：
+1. 只能在条件类型的 extends 右侧分支使用
+infer 不能单独使用，必须嵌套在 T extends ... ? ... : ... 这个条件类型结构中，且只能写在冒号左侧、extends 后的目标类型位置（即判断 “T 是否是某类类型” 的那个 “某类类型” 里）。
+typescript
+运行
+// 合法：infer在条件类型extends右侧
+type ExtractFnReturn<T> = T extends (...args: any[]) => infer R ? R : never;
+
+// 非法：单独使用infer，报错
+type InvalidInfer = infer R;
+
+// 非法：infer在条件类型的true/false分支，报错
+type InvalidInfer2<T> = T extends string ? infer R : never;
+2. 声明的是「临时类型变量」，作用域仅限当前条件类型
+用 infer 声明的变量（如 infer R、infer First）是临时的，仅在当前条件类型的上下文中有效，外部无法访问，且不同条件类型中的同名 infer 变量相互独立，无关联。
+typescript
+运行
+type First<T> = T extends [infer F, ...any[]] ? F : never;
+type Last<T> = T extends [...any[], infer F] ? F : never;
+// 两个F是不同的临时变量，互不影响
+type T1 = First<[string, number]>; // string
+type T2 = Last<[string, number]>;  // number
+3. 支持任意合法的类型变量名（首字母大写为惯例）
+infer 后跟随的是类型变量名，命名无强制要求，但社区惯例是首字母大写（如 R、F、A、Item、Args），便于区分普通类型变量和推断变量，提升代码可读性。
+typescript
+运行
+// 推荐：首字母大写
+type GetReturn<T> = T extends (...args: any[]) => infer ReturnType ? ReturnType : never;
+
+// 合法但不推荐：小写命名
+type GetReturn2<T> = T extends (...args: any[]) => infer r ? r : never;
+二、核心语法格式
+infer 无单独语法，始终与条件类型结合，核心通用格式为：
+typescript
+运行
+// 基础格式：从目标类型U中推断出子类型X，满足则返回X，否则返回兜底类型（如never）
+type CustomType<T> = T extends U<infer X> ? X : DefaultType;
+U<infer X>：包含推断逻辑的目标类型（如函数、元组、数组等）；
+infer X：在目标类型中标记需要提取的子类型位置，声明临时变量X接收提取结果；
+DefaultType：兜底类型（常用never，表示当 T 不匹配 U 时无有效类型）。
+三、经典使用场景（附完整示例）
+infer 主要用于从函数、元组、数组、类 / 对象等复杂类型中提取子类型，以下是最常用的场景，覆盖基础到进阶用法：
+场景 1：提取函数的返回值类型（实现内置ReturnType）
+这是 infer 最基础、最常用的场景，TypeScript 内置工具类型 ReturnType<T> 就是基于此实现的，核心是在函数类型的返回值位置用 infer 标记并提取。
+typescript
+运行
+// 手动实现内置ReturnType：提取函数的返回值类型
+type MyReturnType<T> = 
+  // 判断T是否是函数类型：(...args: any[]) 表示任意参数的函数
+  // infer R 标记函数的返回值位置，提取该位置的类型到R
+  T extends (...args: any[]) => infer R 
+    ? R  // 匹配成功：返回提取的返回值类型R
+    : never; // 匹配失败：返回never（非函数类型无返回值）
+
+// 测试用例
+type Fn1 = () => string;
+type Fn2 = (a: number, b: string) => number[];
+type Fn3 = (name: string) => { id: number; name: string };
+
+type R1 = MyReturnType<Fn1>; // string（正确提取无参函数返回值）
+type R2 = MyReturnType<Fn2>; // number[]（正确提取带参函数返回值）
+type R3 = MyReturnType<Fn3>; // { id: number; name: string }（正确提取对象返回值）
+type R4 = MyReturnType<string>; // never（非函数类型，返回兜底值）
+场景 2：提取函数的参数类型（实现内置Parameters）
+在函数的参数列表位置用 infer 标记，可提取函数的参数元组类型，对应 TypeScript 内置工具类型 Parameters<T>。
+typescript
+运行
+// 手动实现内置Parameters：提取函数的参数元组类型
+type MyParameters<T> = 
+  // infer Args 标记函数的参数位置，提取参数列表为元组类型Args
+  T extends (...args: infer Args) => any 
+    ? Args  // 匹配成功：返回参数元组类型
+    : never; // 匹配失败：返回never
+
+// 测试用例
+type Fn1 = (a: number, b: string) => void;
+type Fn2 = (name: string, age: number, isVip: boolean) => string;
+type Fn3 = () => number;
+
+type P1 = MyParameters<Fn1>; // [number, string]（参数元组）
+type P2 = MyParameters<Fn2>; // [string, number, boolean]（参数元组）
+type P3 = MyParameters<Fn3>; // []（无参函数，空元组）
+type P4 = MyParameters<number>; // never（非函数类型）
+场景 3：提取元组 / 数组的元素类型（实现内置ArrayItem类逻辑）
+元组和数组是 infer 的高频使用场景，可通过解构语法结合 infer 提取第一个元素、最后一个元素、剩余元素或全部元素的通用类型。
+子场景 3.1：提取元组第一个元素类型
+typescript
+运行
+type FirstItem<T> = 
+  // 解构元组：infer F 提取第一个元素，...infer Rest 提取剩余元素（Rest可省略为any[]）
+  T extends [infer F, ...any[]] 
+    ? F 
+    : never;
+
+type Tuple1 = [string, number, boolean];
+type Tuple2 = [1, 2, 3];
+type Tuple3 = [];
+
+type F1 = FirstItem<Tuple1>; // string
+type F2 = FirstItem<Tuple2>; // 1（字面量类型）
+type F3 = FirstItem<Tuple3>; // never（空元组无第一个元素）
+子场景 3.2：提取元组最后一个元素类型
+typescript
+运行
+type LastItem<T> = 
+  // 解构元组：...any[] 匹配前面所有元素，infer L 提取最后一个元素
+  T extends [...any[], infer L] 
+    ? L 
+    : never;
+
+type Tuple1 = [string, number, boolean];
+type Tuple2 = [1];
+
+type L1 = LastItem<Tuple1>; // boolean
+type L2 = LastItem<Tuple2>; // 1
+子场景 3.3：提取数组的通用元素类型
+typescript
+运行
+type ArrayItem<T> = 
+  // 对数组类型T[]，用infer Item 提取数组的元素类型
+  T extends (infer Item)[] 
+    ? Item 
+    : never;
+
+type Arr1 = string[];
+type Arr2 = number[];
+type Arr3 = { id: number }[];
+
+type I1 = ArrayItem<Arr1>; // string
+type I2 = ArrayItem<Arr2>; // number
+type I3 = ArrayItem<Arr3>; // { id: number }
+场景 4：提取类的构造函数参数 / 实例类型（实现内置ConstructorParameters/InstanceType）
+结合类的构造函数类型（new (...args: any[]) => T），用 infer 可提取构造函数的参数类型和类的实例类型，对应内置工具类型 ConstructorParameters<T> 和 InstanceType<T>。
+typescript
+运行
+// 1. 提取类的构造函数参数类型（实现ConstructorParameters）
+type MyConstructorParameters<T> = 
+  // T必须是构造函数类型：new (...args: infer Args) => any
+  T extends new (...args: infer Args) => any 
+    ? Args 
+    : never;
+
+// 2. 提取类的实例类型（实现InstanceType）
+type MyInstanceType<T> = 
+  // T必须是构造函数类型，infer Instance 提取实例类型
+  T extends new (...args: any[]) => infer Instance 
+    ? Instance 
+    : never;
+
+// 测试用类
+class Person {
+  name: string;
+  age: number;
+  constructor(name: string, age: number) {
+    this.name = name;
+    this.age = age;
+  }
+}
+
+// 构造函数类型（Person的构造函数）
+type PersonConstructor = typeof Person;
+
+// 测试
+type Cp = MyConstructorParameters<PersonConstructor>; // [string, number]（构造函数参数）
+type Ins = MyInstanceType<PersonConstructor>; // Person（类的实例类型）
+const p: Ins = new Person("张三", 20); // 合法，Ins等价于Person
+四、关键特性：与联合类型配合的「分布式条件类型」
+当 infer 配合联合类型使用时，会触发 TypeScript 的分布式条件类型特性：条件类型会自动遍历联合类型的每个成员，分别进行推断，最终将所有推断结果合并为新的联合类型。
+这一特性让 infer 能轻松处理联合类型的提取，是高级类型封装的重要技巧，示例如下：
+typescript
+运行
+// 提取联合类型中所有函数的返回值类型，合并为新联合类型
+type ExtractAllReturns<T> = 
+  T extends (...args: any[]) => infer R 
+    ? R 
+    : never;
+
+// 联合类型：包含3个不同返回值的函数
+type FnUnion = (() => string) | ((a: number) => number) | (() => boolean);
+
+// 推断结果：遍历联合类型每个函数，提取返回值后合并为 string | number | boolean
+type AllReturns = ExtractAllReturns<FnUnion>; // string | number | boolean
+五、内置工具类型中的infer应用（核心参考）
+TypeScript 大部分内置高级工具类型都是基于 infer + 条件类型实现的，掌握这些内置类型的底层逻辑，能快速理解 infer 的实际价值，以下是核心内置类型的简化实现：
+内置工具类型	作用	基于 infer 的简化实现
+ReturnType<T>	提取函数返回值类型	type ReturnType<T> = T extends (...args: any[]) => infer R ? R : never
+Parameters<T>	提取函数参数元组类型	type Parameters<T> = T extends (...args: infer A) => any ? A : never
+ConstructorParameters<T>	提取类构造函数参数类型	type ConstructorParameters<T> = T extends new (...args: infer A) => any ? A : never
+InstanceType<T>	提取类的实例类型	type InstanceType<T> = T extends new (...args: any[]) => infer I ? I : never
+Awaited<T>	提取 Promise 的解析值类型（TS4.5+）	type Awaited<T> = T extends Promise<infer R> ? Awaited<R> : T
+示例：实现内置Awaited<T>（处理 Promise 嵌套）
+typescript
+运行
+// 处理嵌套Promise（如Promise<Promise<string>>），递归提取解析值
+type MyAwaited<T> = 
+  T extends Promise<infer R> 
+    ? MyAwaited<R>  // 递归：如果R还是Promise，继续提取
+    : T;            // 非Promise类型，直接返回自身
+
+// 测试用例
+type P1 = Promise<string>;
+type P2 = Promise<Promise<number>>;
+type P3 = Promise<{ id: number; name: string }>;
+
+type A1 = MyAwaited<P1>; // string
+type A2 = MyAwaited<P2>; // number（处理嵌套Promise）
+type A3 = MyAwaited<P3>; // { id: number; name: string }
+type A4 = MyAwaited<string>; // string（非Promise类型）
+六、核心总结
+本质作用：infer 是 TypeScript 条件类型的 “类型提取器”，让 TS 能从复杂类型中动态推断并提取子类型，实现类型层面的 “局部获取”；
+核心规则：仅在条件类型extends右侧使用、声明临时类型变量、作用域仅限当前条件类型；
+核心场景：提取函数（返回值 / 参数）、元组 / 数组（元素）、类（构造参数 / 实例）的子类型，是实现高级类型的基础；
+关键特性：与联合类型配合时触发分布式条件类型，自动遍历并合并推断结果；
+实际价值：TypeScript 内置高级工具类型的核心实现依赖 infer，掌握它才能自主封装可复用的自定义高级类型，提升 TS 类型编程能力。
+infer 是连接 TypeScript 基础类型和高级类型的关键，结合之前的 extends 条件类型，就能实现绝大多数复杂的类型推导和封装需求。

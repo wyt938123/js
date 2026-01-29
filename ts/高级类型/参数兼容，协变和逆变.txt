@@ -1,0 +1,128 @@
+在类型系统中，属性更多的类型是子类型--即更少的更宽泛
+「1.类
+2.函数变量，参数少跟宽泛
+」
+
+在集合论中，属性更少的集合是子集。 -- 即属性更多的更宽泛，区分上面
+
+而一律更具体的可以赋值给跟宽泛的  ---核心
+
+
+找到父类型子类型就可以了
+子类型才可以给父类型赋值
+
+协变--对象赋值
+逆变--函数赋值（是fna=fnb）这里不允许具体给宽泛
+
+简单说就是，具有父子关系的多个类型，在通过某种构造关系构造成的新的类型，如果还具有父子关系则是协变的，而关系逆转了（子变父，父变子）就是逆变的
+
+
+
+
+
+函数协变、逆变与参数双向协变
+函数的协变、逆变是类型系统（如 TypeScript、C#、Java 等）中处理函数类型兼容性的核心规则，本质是解决「一个函数类型能否安全地赋值给另一个函数类型」的问题；而参数双向协变是 TypeScript 为了兼容普通 JavaScript 代码引入的特殊宽松规则（非类型系统原生的严格规则），需重点区分严格模式与宽松模式的差异。
+核心前置概念
+在讲解函数的协变 / 逆变前，先明确基础类型的协变与逆变（以「父子类型」为基础，如 Animal 是父类型，Dog 是子类型，Dog extends Animal）：
+协变（Covariance）：子类型可以赋值给父类型，遵循「子→父」的赋值方向，是最符合直觉的类型兼容规则（如 let a: Animal = new Dog() 合法）；
+逆变（Contravariance）：父类型可以赋值给子类型，遵循「父→子」的反向赋值方向，是函数类型兼容的核心特殊规则；
+不变（Invariance）：只有相同类型才能互相赋值，子类型和父类型之间无兼容性（如部分严格类型语言的默认规则）；
+双向协变（Bivariance）：子类型可以赋值给父类型，父类型也可以赋值给子类型，双向都兼容（TypeScript 宽松模式下的参数规则）。
+一、函数类型兼容的核心规则
+判断两个函数类型是否兼容，仅关注参数类型和返回值类型（忽略函数名、参数名、是否有可选参数等非核心要素），核心规则可总结为：
+核心口诀
+返回值协变，参数逆变
+返回值：遵循协变规则（子类型返回值的函数，可以赋值给父类型返回值的函数）；
+参数：严格类型系统中遵循逆变规则（父类型参数的函数，可以赋值给子类型参数的函数）。
+规则本质：保证函数调用的类型安全
+函数类型兼容的核心要求是：用「被赋值的函数」调用时，传入的参数能被「赋值的函数」正确接收，返回的结果能被「接收方」正确使用，无类型丢失或非法访问。
+二、返回值协变（Covariant Return）
+规则详解
+若函数 F1 的返回值是子类型，函数 F2 的返回值是父类型，则 F1 可以安全赋值给 F2（子返回值 → 父返回值，符合协变）。
+代码示例（TypeScript）
+typescript
+运行
+// 基础父子类型
+class Animal { name: string = 'animal' }
+class Dog extends Animal { bark() { console.log('汪汪') } } // Dog 是 Animal 的子类型
+
+// 两个函数类型：返回值分别为子类型 Dog 和父类型 Animal
+type F1 = () => Dog;    // 子返回值函数
+type F2 = () => Animal; // 父返回值函数
+
+const f1: F1 = () => new Dog();
+const f2: F2 = f1; // 合法：返回值协变，F1 可以赋值给 F2
+
+// 调用 f2，返回值是 Animal 类型（实际是 Dog），可安全访问父类型属性
+console.log(f2().name); // 输出：animal
+安全原因
+f2 被声明为返回 Animal，调用者只会访问 Animal 的属性 / 方法（如 name）；而 f1 实际返回 Dog（包含 Animal 的所有特性），完全能满足调用者的需求，无类型风险。
+三、参数逆变（Contravariant Parameter）
+规则详解
+若函数 F1 的参数是父类型，函数 F2 的参数是子类型，则 F1 可以安全赋值给 F2（父参数 → 子参数，符合逆变）。
+代码示例（TypeScript）
+typescript
+运行
+class Animal { name: string = 'animal' }
+class Dog extends Animal { bark() { console.log('汪汪') } }
+
+// 两个函数类型：参数分别为父类型 Animal 和子类型 Dog
+type F1 = (a: Animal) => void; // 父参数函数
+type F2 = (d: Dog) => void;    // 子参数函数
+
+// F1 实现：仅访问 Animal 的属性（所有子类型都拥有）
+const f1: F1 = (a) => console.log(a.name);
+// 合法：参数逆变，F1 可以赋值给 F2
+const f2: F2 = f1;
+
+// 调用 f2，传入 Dog 实例（符合 F2 的参数要求）
+f2(new Dog()); // 输出：animal
+安全原因
+f2 被声明为接收 Dog 类型参数，调用者只会传入 Dog 或其自类型；而 f1 仅处理 Animal 类型（Dog 是 Animal 的子类型，包含所有 Animal 的特性），因此 f1 能正确处理 f2 接收到的所有参数，无类型错误。
+反例：参数协变会导致类型不安全
+若允许「子参数函数赋值给父参数函数」（参数协变），会直接导致运行时错误：
+typescript
+运行
+type F1 = (a: Animal) => void;
+type F2 = (d: Dog) => void;
+
+// F2 实现：访问 Dog 独有的方法 bark()
+const f2: F2 = (d) => d.bark();
+// 非法：若允许参数协变，此处赋值不会报错，但调用时会崩溃
+// const f1: F1 = f2;
+
+// 调用 f1，传入 Animal 实例（符合 F1 的参数要求，但 Animal 没有 bark 方法）
+// f1(new Animal()); // 运行时错误：a.bark is not a function
+四、参数双向协变（Bivariant Parameter）
+概念
+参数双向协变是指：函数的参数类型同时支持协变和逆变—— 子类型参数的函数可以赋值给父类型参数的函数，父类型参数的函数也可以赋值给子类型参数的函数，双向都兼容。
+核心特点
+非原生严格规则：并非类型系统的原生安全规则，而是 TypeScript 特有的宽松规则；
+兼容 JavaScript 代码：TypeScript 设计该规则的核心目的是兼容普通 JavaScript 的编程习惯（JS 无类型检查，开发者常混用父子类型参数，TS 宽松模式下不强制报错）；
+模式相关：仅在 TypeScript 的 宽松模式（默认模式，strictFunctionTypes: false） 下生效；在 严格函数类型模式（strictFunctionTypes: true） 下会被禁用，参数恢复严格逆变规则。
+代码示例：宽松模式下的双向协变（默认）
+typescript
+运行
+// tsconfig.json 中 "strictFunctionTypes": false（默认）
+class Animal { name: string = 'animal' }
+class Dog extends Animal { bark() { console.log('汪汪') } }
+
+type F1 = (a: Animal) => void;
+type F2 = (d: Dog) => void;
+
+// 1. 父参数 → 子参数（逆变）：合法（严格模式也支持）
+const f2: F2 = (a: Animal) => console.log(a.name);
+
+// 2. 子参数 → 父参数（协变）：宽松模式下合法，严格模式下报错
+const f1: F1 = (d: Dog) => d.bark(); // 宽松模式无报错，严格模式报错：类型不兼容
+
+// 注意：此赋值存在类型安全风险，调用时若传入非 Dog 实例会崩溃
+// f1(new Animal()); // 运行时错误：d.bark is not a function
+严格模式禁用双向协变
+在 tsconfig.json 中开启 strictFunctionTypes: true（属于 strict: true 大模式的一部分），TypeScript 会禁用参数双向协变，强制参数遵循严格逆变规则，此时上述「子参数→父参数」的赋值会直接在编译期报错，避免运行时风险。
+五、关键总结
+函数类型兼容的核心：仅关注参数类型和返回值类型，与函数名、参数名无关；
+严格类型规则：返回值协变，参数逆变（保证函数调用的类型安全，所有严格类型语言均遵循）；
+协变（返回值）：子类型返回值函数 → 父类型返回值函数，符合直觉，安全；
+逆变（参数）：父类型参数函数 → 子类型参数函数，反向赋值，安全（避免参数协变的类型风险）；
+参数双向协变：TypeScript 宽松模式的非安全兼容规则，双向赋值都允许，开启 strictFunctionTypes: true 后禁用，恢复参数严格逆变。
