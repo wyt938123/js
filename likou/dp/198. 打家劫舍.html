@@ -9,6 +9,7 @@
     <script>
         // dp 含义，dp[i] 表示前 i 个房子能偷到的最大值
         // 第一位和第二位的初始化要注意！
+        // 可以优化为两个变量
         var rob = function (nums) {
             if(nums.length == 1) return nums[0]
             let dp = []
