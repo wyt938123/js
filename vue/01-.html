@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<body>
+    <script>
+        https://juejin.cn/post/7275230782545199141?searchId=20260130105301CD74BB2CD49702787363#heading-2
+    </script>
+    <script>
+    //满足多个条件  进行渲染
+
+        <image
+      if="{{init &&+$app.$def.adcdnConfig?.ldBtSt }}"
+      style="width: 750px;height: {{btHeight || 80}}px"
+      alt="/assets/images/common/default.png"
+      src="{{btSrc}}"
+      
+    ></image>
+
+    props: {
+    imgUrl: {
+      type: String,
+      default: '',
+    },
+
+
+    #### 
+    // 通过全局 决定样式
+    <text
+      if="{{ init && +$app.$def.useConfig.ndtmSh &&bndt }}"
+      class="ndtmst {{`ndtmst_${+$app.$def.useConfig.ndtmSh}`}}"
+      >{{ ndtmJm }}</text>
+
+
+      .ndtmst {
+  position: absolute;
+  font-size: 16px;
+  color: rgba(255, 255, 255, 0.4);
+}
+.ndtmst_1 {
+  width: 730px;
+  left: 20px;
+  bottom: 140px;
+  text-align: left;
+}
+
+.ndtmst_2 {
+  width: 730px;
+  right: 20px;
+  bottom: 140px;
+  text-align: right;
+}
+
+
+
+### 逻辑的控制权得交给父亲
+<template>
+  <el-dialog v-model="visible">
+
+  </el-dialog>
+</template>
+
+<script setup>
+import { ref } from 'vue'
+
+const visible = ref(false)
+
+const open = () => {
+  visible.value = true
+}
+
+const close = () => {
+  visible.value = false
+}
+
+defineExpose({
+  open,
+  close
+})
+然后在父组件中直接使用ref引用子组件的open和close方法就可以实现弹窗的打开和关闭了。
+
+这种封装不能说不好，但是给人的感觉就是不够优雅，而且在父组件中使用的时候也不够方便，需要引用子组件的open和close方法
+</script>
+
+    </script>
+</body>
+</html>

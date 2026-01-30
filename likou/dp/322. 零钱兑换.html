@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+
+<body>
+    <script>
+        // dp[i] 表示金额 i 所需的最少硬币数
+        var coinChange = function (coins, amount) {
+            let dp = new Array(amount + 1).fill(1e6)
+            dp[0] = 0
+            for (let i = 1; i <= amount; i++) {
+                for (let j = 0 ; j<coins.length; j++){
+                    if(i >= coins[j]){
+                        dp[i] = Math.min(dp[i],dp[i-coins[j]]+1)
+                    }
+                }
+            }
+            if (dp[amount] === 1e6) return -1
+            return dp[amount]
+        };
+    </script>
+</body>
+
+</html>
