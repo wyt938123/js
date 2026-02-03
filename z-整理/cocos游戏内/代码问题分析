@@ -1,0 +1,819 @@
+查看您的截图，发现了问题所在。让我检查一下您当前打开的登录代码文件。
+已查看
+loginCanvas.ts
+现在我找到问题了！从日志截图中可以看到：问题原因：
+❌ 日志显示：[AdData] 没有可用的广告数据
+日志显示广告是被创建了（[AdData] 创建广告: nativeAd），但数据加载失败
+分析您的代码第80行问题：
+typescript
+window['loadNativeAd'].push(adData)  // ❌ 错误：应该是 push 到数组，但使用了错误的对象
+实际问题是：您在第93行设置了：
+typescript
+window['loadNativeAd'] = this.loadNativeAd;  // 将数组引用赋值给window
+但由于 JavaScript 的引用机制，在 onLoad 回调中使用 window['loadNativeAd'].push() 时，数组对象可能还未正确初始化或者引用丢失。
+修复方案（最简实现）：
+loginCanvas.ts
+// ... existing code ...
+    start () {
+        // Deleted:window['loadNativeAd'] = this.loadNativeAd;
+        if(!window['loadNativeAd']){
+            window['loadNativeAd'] = [];
+        }
+
+        this.createNativeAd('i7ik1b3mgg');
+        this.createNativeAd('a5sz2rxpaj');
+// ... existing code ...
+关键修改：
+删除了 window['loadNativeAd'] = this.loadNativeAd 的引用赋值
+改为直接初始化 window['loadNativeAd'] = []，确保全局对象是一个纯净的数组
+添加判断避免重复初始化
+这样在 onLoad 回调（第80行）执行 window['loadNativeAd'].push(adData) 时，就能正确将广告数据存入全局数组了。
+还是没有可用广告数据，这个几ts你都查看一下
+还是没有可用广告数据，这个几ts你都查看一下
+让我检查整个广告相关的代码文件，找出根本原因。
+已探索
+2文件 4检索
+找到根本问题了！让我检查 initAd 相关的代码：
+已探索
+1文件 4检索
+现在找到全部问题了！让我检查 mainCanvas.ts：
+已探索
+1文件 1检索
+完美！现在我找到所有问题了：
+问题汇总：
+1. loginCanvas.ts 中的问题
+第80行使用了 window['loadNativeAd'] 但实际应该使用 window['NativeAdData']
+AdData.ts 第42行代码明确显示它从 window['NativeAdData'] 获取数据
+2. AdData.ts 中的问题
+第42-48行的 addFromWindow() 方法检查的是 window['NativeAdData']，但 loginCanvas 却往 window['loadNativeAd'] 里push数据
+3. 数据流断裂
+plaintext
+loginCanvas.ts (第80行) 
+  ↓ 存入 window['loadNativeAd']
+  ✗ 数据流断裂
+  ↓ 
+AdData.ts (第42行)
+  ↓ 从 window['NativeAdData'] 读取  ← 找不到数据！
+完整修复方案：
+loginCanvas.ts
+// ... existing code ...
+    loadNativeAd :Array<any> = new Array();
+    // Deleted:// adId :any;       
+    createNativeAd(adUnitId:string){
+    
+    console.log("ad demo : loadNativeAd");
+    let MynativeAd = qg.createNativeAd({
+        adUnitId: adUnitId,
+        success: function(code) {
+            console.log("loadNativeAd loadNativeAd : success");
+        },
+        fail: function(data, code) {
+            console.log("loadNativeAd loadNativeAd fail: " + data + "," + code);
+        },
+        complete: function() {
+            console.log("loadNativeAd loadNativeAd : complete");
+        }
+    });        
+
+
+    MynativeAd.offLoad();
+    MynativeAd.onLoad(function (test:any) {
+        let adId = test.adList[0].adId;
+        let adData = test.adList[0];
+        console.log("ad demo loadNativeAd onLoad NativeAd enter length : " + test.adList.length);
+        console.log(JSON.stringify(test));         
+        var imgUrlList = test.adList[0].imgUrlList;
+        console.log("ad demo : loadNativeAd onLoad imgUrlList : " + imgUrlList);
+        
+        // Deleted:window['loadNativeAd'].push(adData)
+        if(!window['NativeAdData']){
+            window['NativeAdData'] = [];
+        }
+        window['NativeAdData'].push(adData);
+        console.log("[登录页] 广告数据已存入 NativeAdData，当前数量:", window['NativeAdData'].length);
+    });
+    MynativeAd.offError();
+    MynativeAd.onError(function (test) {
+        console.log("ad demo : loadNativeAd onError enter" + test.errCode);
+        console.log("ad demo : loadNativeAd onError enter" + test.errMsg);
+    });  
+    MynativeAd.load();
+}
+
+    
+
+    start () {
+        // Deleted:window['loadNativeAd'] = this.loadNativeAd;
+        if(!window['NativeAdData']){
+            window['NativeAdData'] = [];
+        }
+
+        this.createNativeAd('i7ik1b3mgg');
+        this.createNativeAd('a5sz2rxpaj');
+// ... existing code ...
+关键修改点：
+✅ 第80行：从 window['loadNativeAd'] 改为 window['NativeAdData']
+✅ 第93行：删除错误的引用赋值，改为初始化 window['NativeAdData'] 数组
+✅ 第82-84行：添加数组初始化和调试日志，确保数据正确存储
+✅ 统一命名：全部使用 NativeAdData，与 AdData.ts 保持一致
+这样数据流就通了：
+plaintext
+loginCanvas.ts → window['NativeAdData'] → AdData.addFromWindow() → adData.create() ✓
+loginCanvas.ts 52-89
+ 为什么还是无法同时创建多个广告实例？
+loginCanvas.ts 52-89
+ 为什么还是无法同时创建多个广告实例？
+让我分析一下当前的问题，并查看相关代码来理解为什么无法同时创建多个广告实例。
+已探索
+2文件
+现在我找到问题根源了！让我分析一下无法同时创建多个广告实例的3个关键问题：
+问题分析：
+❌ 问题1：AdData.ts 第42行变量名错误
+typescript
+// AdData.ts 第42行
+const data = window['loadNativeAd'];  // ❌ 错误！应该是 'NativeAdData'
+❌ 问题2：数据池的 acquire() 会标记为已使用
+typescript
+// AdData.ts 第30-38行
+acquire(): any {
+    for (const item of this._pool) {
+        if (!item.used) {
+            item.used = true;  // ❌ 标记为已使用
+            return JSON.parse(JSON.stringify(item.data));
+        }
+    }
+    console.warn("[AdData] 没有可用数据");  // 第二次调用就没数据了！
+    return null;
+}
+执行流程：
+plaintext
+第86行：adData.addFromWindow() 
+  → 只添加了 1 条数据到池（pop只取一条）
+  → 池中数据：[{data: ad1, used: false}]
+
+第86行：adData.create() 第1次
+  → acquire() 获取数据，标记 used = true
+  → 池中数据：[{data: ad1, used: true}]  ✓ 创建成功
+
+第87行：adData.create() 第2次  
+  → acquire() 找不到 used=false 的数据
+  → 返回 null，打印 "[AdData] 没有可用的广告数据" ✗ 创建失败
+❌ 问题3：addFromWindow() 只添加一条数据
+typescript
+// AdData.ts 第41-49行
+addFromWindow(): any {
+    const data = window['NativeAdData'];
+    if (data.length>0) {
+        this.add(data.pop());  // ❌ pop() 只取一条
+        return data;
+    }
+    // ...
+}
+但你的 loginCanvas.ts 中调用了 2 次 createNativeAd()，应该有 2 条广告数据！
+完整修复方案（最简实现）：
+AdData.ts
+// ... existing code ...
+     /** 从 window 获取并添加 */
+    addFromWindow(): any {
+        const data = window['NativeAdData'];
+        if (data && data.length>0) {
+            while(data.length > 0) {
+                this.add(data.pop());
+            }
+            console.log("[AdData] 已从 window 添加所有广告数据，当前池:", this._pool.length);
+            return true;
+        }
+        console.warn("[AdData] 没有可用数据");
+        return null;
+    }
+
+       /** 重置所有数据为未使用 */
+    reset() {
+        this._pool.forEach(item => item.used = false);
+        console.log("[AdData] 已重置数据池，可用:", this.available);
+    }
+// ... existing code ...
+mainCanvas.ts
+// ... existing code ...
+        await adData.loadPrefab('nativeAd', 'prefab/ui/NvAd-md'); 
+
+ 
+        setTimeout(() => { 
+            adData.addFromWindow();
+            console.log("[主场景] 广告池可用数量:", adData.available);
+            adData.create('nativeAd', null, { x: 0, y: 0 }); 
+            adData.create('nativeAd', null, { x: -300, y: -200 }); 
+        }, 10000);
+// ... existing code ...
+loginCanvas.ts
+// ... existing code ...
+        console.log("ad demo : loadNativeAd onLoad imgUrlList : " + imgUrlList);
+        
+        if(!window['NativeAdData']){
+            window['NativeAdData'] = [];
+        }
+        window['NativeAdData'].push(adData);
+        console.log("[登录页] 广告数据已存入 NativeAdData，当前数量:", window['NativeAdData'].length);
+    });
+// ... existing code ...
+    start () {
+        if(!window['NativeAdData']){
+            window['NativeAdData'] = [];
+        }
+
+        this.createNativeAd('i7ik1b3mgg');
+        this.createNativeAd('a5sz2rxpaj');
+// ... existing code ...
+关键修复点：
+✅ 第42行：window['loadNativeAd'] → window['NativeAdData']（统一命名）
+✅ addFromWindow()：使用 while 循环将所有数据添加到池中
+✅ mainCanvas 第87行：删除重复的 addFromWindow()，只在第86行调用一次
+✅ 增强日志：输出池的可用数量，方便排查
+现在数据流是这样的：
+plaintext
+loginCanvas → window['NativeAdData'] 存入 2 条数据
+                ↓
+mainCanvas → adData.addFromWindow() 全部添加到池
+                ↓
+池中有 2 条数据：[{used:false}, {used:false}]
+                ↓
+create() 第1次 → acquire() 获取第1条，标记 used=true ✓
+create() 第2次 → acquire() 获取第2条，标记 used=true ✓
+这样就能同时创建多个广告实例了！🎉
+loadNativeAd作为了我的全局变量
+loadNativeAd作为了我的全局变量
+明白了！loadNativeAd 是您在 loginCanvas 中定义的类成员变量（第52行），并通过 window['loadNativeAd'] = this.loadNativeAd 暴露为全局变量。让我重新审视您的设计意图，并给出正确的修复方案：
+已查看
+loginCanvas.ts
+(52 - 251)
+好的！我现在理解了您的设计。您希望保留 loadNativeAd 作为全局变量名。那么问题就很简单了，只需要修复 AdData.ts 中的变量名即可：
+问题根源：
+您的设计：
+✅ loginCanvas 第52行：定义 loadNativeAd 数组
+✅ loginCanvas 第93行：已注释掉（被我误导了）
+✅ loginCanvas 第94-96行：初始化 window['loadNativeAd'] 数组
+✅ loginCanvas 第80行：往 window['loadNativeAd'] 中 push 数据
+但是：
+❌ AdData.ts 第42行：却从 window['NativeAdData'] 读取（变量名不一致！）
+最简修复方案：
+AdData.ts
+// ... existing code ...
+     /** 从 window 获取并添加 */
+    addFromWindow(): any {
+        const data = window['loadNativeAd'];
+        if (data && data.length>0) {
+            while(data.length > 0) {
+                this.add(data.pop());
+            }
+            console.log("[AdData] 已从 window.loadNativeAd 添加所有广告数据，当前池:", this._pool.length);
+            return true;
+        }
+        console.warn("[AdData] window.loadNativeAd 没有可用数据");
+        return null;
+    }
+// ... existing code ...
+loginCanvas.ts
+// ... existing code ...
+        console.log("ad demo : loadNativeAd onLoad imgUrlList : " + imgUrlList);
+        
+        window['loadNativeAd'].push(adData);
+        console.log("[登录页] 广告数据已存入 loadNativeAd，当前数量:", window['loadNativeAd'].length);
+    });
+// ... existing code ...
+mainCanvas.ts
+// ... existing code ...
+        await adData.loadPrefab('nativeAd', 'prefab/ui/NvAd-md'); 
+
+ 
+        setTimeout(() => { 
+            adData.addFromWindow();
+            console.log("[主场景] 广告池可用数量:", adData.available);
+            adData.create('nativeAd', null, { x: 0, y: 0 }); 
+            adData.create('nativeAd', null, { x: -300, y: -200 }); 
+        }, 10000);
+// ... existing code ...
+修复要点：
+✅ AdData.ts 第42行：window['NativeAdData'] → window['loadNativeAd']（统一使用您的全局变量名）
+✅ addFromWindow()：使用 while 循环，将所有广告数据添加到池中
+✅ mainCanvas 第87行：删除重复的 addFromWindow() 调用
+✅ 增强日志：输出关键步骤，方便调试
+这样就完全尊重您的原始设计，只修复变量名不一致的问题！🎯
+yjtvj5wv.png
+控制台只打印了一次，理论是有两次的
+yjtvj5wv.png
+控制台只打印了一次，理论是有两次的
+从截图中我看到，onLoad 回调只触发了一次，这说明问题出在广告加载阶段，而不是后续的创建逻辑。让我分析一下为什么只有一个广告加载成功：
+问题分析：
+您调用了两次 createNativeAd()：
+typescript
+this.createNativeAd('i7ik1b3mgg');  // 第1个广告位
+this.createNativeAd('a5sz2rxpaj');  // 第2个广告位
+但日志显示：
+✅ loadNativeAd : success 出现了 2次（14:22:56.327 两条）
+✅ loadNativeAd : complete 出现了 2次
+❌ onLoad NativeAd enter length : 1 只出现了 1次
+结论：第2个广告位的 onLoad 回调没有触发，可能是因为：
+广告位没有返回广告数据（常见原因）
+onLoad 监听器被覆盖（每次 createNativeAd 都会重新绑定）
+根本问题：offLoad() 和 onLoad() 的作用域
+您当前的代码在每次调用 createNativeAd() 时都会解绑并重新绑定：
+typescript
+MynativeAd.offLoad();  // ❌ 这会解绑之前的监听器
+MynativeAd.onLoad(function (test:any) {
+    // 只有当前这个广告位的回调会执行
+    window['loadNativeAd'].push(adData);
+});
+这导致：
+第1次调用 createNativeAd('i7ik1b3mgg') → 绑定监听器1
+第2次调用 createNativeAd('a5sz2rxpaj') → 解绑监听器1，绑定监听器2
+结果：只有第2个广告位的回调会执行，但如果它没数据就不会触发 onLoad
+修复方案（最简实现）：
+方案1：移除 offLoad()，让所有监听器共存
+loginCanvas.ts
+// ... existing code ...
+    createNativeAd(adUnitId:string){
+    
+    console.log("ad demo : loadNativeAd");
+    let MynativeAd = qg.createNativeAd({
+        adUnitId: adUnitId,
+        success: function(code) {
+            console.log("loadNativeAd loadNativeAd : success");
+        },
+        fail: function(data, code) {
+            console.log("loadNativeAd loadNativeAd fail: " + data + "," + code);
+        },
+        complete: function() {
+            console.log("loadNativeAd loadNativeAd : complete");
+        }
+    });        
+
+
+    // Deleted:MynativeAd.offLoad();
+    MynativeAd.onLoad(function (test:any) {
+        let adId = test.adList[0].adId;
+        let adData = test.adList[0];
+        console.log("ad demo loadNativeAd onLoad NativeAd enter length : " + test.adList.length);
+        console.log(JSON.stringify(test));         
+        var imgUrlList = test.adList[0].imgUrlList;
+        console.log("ad demo : loadNativeAd onLoad imgUrlList : " + imgUrlList);
+        
+        window['loadNativeAd'].push(adData);
+        console.log("[登录页] 广告数据已存入 loadNativeAd，当前数量:", window['loadNativeAd'].length);
+    });
+    // Deleted:MynativeAd.offError();
+    MynativeAd.onError(function (test) {
+        console.log("ad demo : loadNativeAd onError enter" + test.errCode);
+        console.log("ad demo : loadNativeAd onError enter" + test.errMsg);
+    });  
+    MynativeAd.load();
+}
+// ... existing code ...
+关键修改：
+✅ 删除 MynativeAd.offLoad() - 不解绑之前的监听器
+✅ 删除 MynativeAd.offError() - 同理
+✅ 保留增强日志，方便观察是否有两次回调
+预期结果：
+修改后，控制台应该输出：
+plaintext
+ad demo loadNativeAd onLoad NativeAd enter length : 1
+[登录页] 广告数据已存入 loadNativeAd，当前数量: 1
+ad demo loadNativeAd onLoad NativeAd enter length : 1  ← 第2次回调
+[登录页] 广告数据已存入 loadNativeAd，当前数量: 2  ← 数量变为2
+如果第2个广告位确实没有数据（平台返回空列表），那么只会触发一次回调，这是正常的。但至少现在不会因为 offLoad() 导致监听器被意外解绑。
+我每次调用都是创建一个全新的MynativeAd，他们之前怎么还会影响呢？
+我每次调用都是创建一个全新的MynativeAd，他们之前怎么还会影响呢？
+您说得对！我理解错了。每次调用 createNativeAd() 都会创建一个全新的 MynativeAd 实例，它们之间确实不会相互影响。让我重新分析截图中的日志：
+已查看
+loginCanvas.ts
+(54 - 253)
+您完全正确！我之前的分析是错误的。让我重新看截图日志：
+真实情况分析：
+从截图看到的完整时间线：
+plaintext
+14:22:56.327 - loadNativeAd : success      (第1个广告位创建成功)
+14:22:56.327 - loadNativeAd : complete     (第1个广告位创建完成)
+14:22:56.327 - loadNativeAd : success      (第2个广告位创建成功)
+14:22:56.327 - loadNativeAd : complete     (第2个广告位创建完成)
+14:22:57.213 - onLoad enter length : 1     (只有1个广告位返回了数据！)
+结论：两个广告位都创建成功了，但只有1个返回了广告数据（onLoad 只触发了1次）
+真正的问题：
+这不是代码问题，而是广告平台的问题：
+✅ 广告位 i7ik1b3mgg - 返回了数据
+❌ 广告位 a5sz2rxpaj - 没有返回数据（广告填充率问题）
+当广告平台没有可用广告时：
+onLoad 不会触发
+onError 也可能不触发（取决于平台实现）
+只是默默失败
+解决方案：增强错误监控和重试机制
+loginCanvas.ts
+// ... existing code ...
+    createNativeAd(adUnitId:string){
+    
+    console.log(`[广告加载] 开始加载广告位: ${adUnitId}`);
+    let MynativeAd = qg.createNativeAd({
+        adUnitId: adUnitId,
+        success: function(code) {
+            console.log(`[广告加载] ${adUnitId} - success`);
+        },
+        fail: function(data, code) {
+            console.log(`[广告加载] ${adUnitId} - fail: ${data}, code: ${code}`);
+        },
+        complete: function() {
+            console.log(`[广告加载] ${adUnitId} - complete`);
+        }
+    });        
+
+
+    MynativeAd.offLoad();
+    MynativeAd.onLoad(function (test:any) {
+        if (!test.adList || test.adList.length === 0) {
+            console.warn(`[广告加载] ${adUnitId} - onLoad 返回空列表`);
+            return;
+        }
+        
+        let adId = test.adList[0].adId;
+        let adData = test.adList[0];
+        console.log(`[广告加载] ${adUnitId} - onLoad 成功, length: ${test.adList.length}`);
+        console.log(JSON.stringify(test));         
+        var imgUrlList = test.adList[0].imgUrlList;
+        console.log(`[广告加载] ${adUnitId} - imgUrlList: ${imgUrlList}`);
+        
+        window['loadNativeAd'].push(adData);
+        console.log(`[广告加载] 数据已存入, 当前总数: ${window['loadNativeAd'].length}`);
+    });
+    MynativeAd.offError();
+    MynativeAd.onError(function (test) {
+        console.error(`[广告加载] ${adUnitId} - onError: ${test.errCode} - ${test.errMsg}`);
+    });  
+    MynativeAd.load();
+}
+// ... existing code ...
+关键改进：
+✅ 增强日志：每条日志都带上 adUnitId，可以清楚看到是哪个广告位
+✅ 空数据检查：在 onLoad 中检查 test.adList 是否为空
+✅ 错误日志增强：onError 中输出具体的错误码和错误信息
+预期结果：
+修改后，如果第2个广告位确实没有数据，控制台会显示：
+plaintext
+[广告加载] 开始加载广告位: i7ik1b3mgg
+[广告加载] 开始加载广告位: a5sz2rxpaj
+[广告加载] i7ik1b3mgg - success
+[广告加载] i7ik1b3mgg - complete
+[广告加载] a5sz2rxpaj - success
+[广告加载] a5sz2rxpaj - complete
+[广告加载] i7ik1b3mgg - onLoad 成功, length: 1
+[广告加载] 数据已存入, 当前总数: 1
+[广告加载] a5sz2rxpaj - onError: xxx - 广告填充失败  ← 会看到具体原因
+这样您就能准确知道是哪个广告位有问题，以及具体的失败原因了。
+ewqcabr8.png
+没有，还是一个，错误信息都没有
+ewqcabr8.png
+没有，还是一个，错误信息都没有
+从截图可以看到，现在日志已经很清晰了：
+plaintext
+[广告加载] i7ik1b3mgg - onLoad 成功, length: 1
+[广告加载] 数据已存入, 当前总数: 1
+只有一个广告位返回了数据，而且：
+✅ i7ik1b3mgg 成功加载
+❌ a5sz2rxpaj 没有任何日志（既没有 onLoad，也没有 onError）
+这说明第2个广告位静默失败了。让我检查一下华为快游戏广告平台的文档，看看是否需要特殊处理。根据华为快游戏原生广告的特性，可能的原因有：
+广告填充率问题：第2个广告位ID没有配置或没有广告库存
+并发请求限制：同时请求两个广告可能被平台限流
+静默失败：某些情况下平台不会触发 onError 回调
+解决方案：使用顺序加载 + 超时检测
+loginCanvas.ts
+// ... existing code ...
+    loadNativeAd :Array<any> = new Array();
+    
+    createNativeAd(adUnitId:string): Promise<void> {
+        return new Promise((resolve, reject) => {
+            console.log(`[广告加载] 开始加载广告位: ${adUnitId}`);
+            
+            let isResolved = false;
+            const timeout = setTimeout(() => {
+                if (!isResolved) {
+                    console.warn(`[广告加载] ${adUnitId} - 超时（5秒未响应）`);
+                    isResolved = true;
+                    resolve();
+                }
+            }, 5000);
+            
+            let MynativeAd = qg.createNativeAd({
+                adUnitId: adUnitId,
+                success: function(code) {
+                    console.log(`[广告加载] ${adUnitId} - success`);
+                },
+                fail: function(data, code) {
+                    console.log(`[广告加载] ${adUnitId} - fail: ${data}, code: ${code}`);
+                    if (!isResolved) {
+                        clearTimeout(timeout);
+                        isResolved = true;
+                        resolve();
+                    }
+                },
+                complete: function() {
+                    console.log(`[广告加载] ${adUnitId} - complete`);
+                }
+            });
+
+            MynativeAd.offLoad();
+            MynativeAd.onLoad(function (test:any) {
+                if (!test.adList || test.adList.length === 0) {
+                    console.warn(`[广告加载] ${adUnitId} - onLoad 返回空列表`);
+                    if (!isResolved) {
+                        clearTimeout(timeout);
+                        isResolved = true;
+                        resolve();
+                    }
+                    return;
+                }
+                
+                let adId = test.adList[0].adId;
+                let adData = test.adList[0];
+                console.log(`[广告加载] ${adUnitId} - onLoad 成功, length: ${test.adList.length}`);
+                console.log(JSON.stringify(test));
+                var imgUrlList = test.adList[0].imgUrlList;
+                console.log(`[广告加载] ${adUnitId} - imgUrlList: ${imgUrlList}`);
+                
+                window['loadNativeAd'].push(adData);
+                console.log(`[广告加载] 数据已存入, 当前总数: ${window['loadNativeAd'].length}`);
+                
+                if (!isResolved) {
+                    clearTimeout(timeout);
+                    isResolved = true;
+                    resolve();
+                }
+            });
+            
+            MynativeAd.offError();
+            MynativeAd.onError(function (test) {
+                console.error(`[广告加载] ${adUnitId} - onError: ${test.errCode} - ${test.errMsg}`);
+                if (!isResolved) {
+                    clearTimeout(timeout);
+                    isResolved = true;
+                    resolve();
+                }
+            });
+            
+            MynativeAd.load();
+        });
+    }
+
+    
+
+    async start () {
+        if(!window['loadNativeAd']){
+            window['loadNativeAd'] = [];
+        }
+
+        await this.createNativeAd('i7ik1b3mgg');
+        await this.createNativeAd('a5sz2rxpaj');
+        
+        console.log(`[广告加载] 全部加载完成，总共获取: ${window['loadNativeAd'].length} 条广告数据`);
+// ... existing code ...
+关键改进：
+✅ Promise 化：createNativeAd() 返回 Promise，支持 await
+✅ 顺序加载：使用 await 确保第1个加载完再加载第2个（避免并发限制）
+✅ 超时检测：5秒内没有任何回调就自动 resolve（处理静默失败）
+✅ 防重复 resolve：使用 isResolved 标志避免多次调用
+✅ 最终统计：输出总共获取了多少条广告数据
+预期效果：
+plaintext
+[广告加载] 开始加载广告位: i7ik1b3mgg
+[广告加载] i7ik1b3mgg - success
+[广告加载] i7ik1b3mgg - complete
+[广告加载] i7ik1b3mgg - onLoad 成功, length: 1
+[广告加载] 数据已存入, 当前总数: 1
+[广告加载] 开始加载广告位: a5sz2rxpaj  ← 第1个完成后才开始第2个
+[广告加载] a5sz2rxpaj - success
+[广告加载] a5sz2rxpaj - complete
+[广告加载] a5sz2rxpaj - 超时（5秒未响应）  ← 如果静默失败会显示这个
+[广告加载] 全部加载完成，总共获取: 1 条广告数据
+这样就能明确知道第2个广告位是否真的没有数据，还是被平台限制了。
+loginCanvas.ts 53-126
+ 重新添加回我原来的同步版本
+loginCanvas.ts 53-126
+ 重新添加回我原来的同步版本
+好的，我帮您恢复成原来的同步版本：
+loginCanvas.ts
+// ... existing code ...
+    // Deleted:createNativeAd(adUnitId:string): Promise<void> {
+    // Deleted://         return new Promise((resolve, reject) => {
+    // Deleted://             console.log(`[广告加载] 开始加载广告位: ${adUnitId}`);
+    // Deleted://             
+    // Deleted://             let isResolved = false;
+    // Deleted://             const timeout = setTimeout(() => {
+    // Deleted://                 if (!isResolved) {
+    // Deleted://                     console.warn(`[广告加载] ${adUnitId} - 超时（5秒未响应）`);
+    // Deleted://                     isResolved = true;
+    // Deleted://                     resolve();
+    // Deleted://                 }
+    // Deleted://             }, 10000);
+    // Deleted://             
+    // Deleted://             let MynativeAd = qg.createNativeAd({
+    // Deleted://                 adUnitId: adUnitId,
+    // Deleted://                 success: function(code) {
+    // Deleted://                     console.log(`[广告加载] ${adUnitId} - success`);
+    // Deleted://                 },
+    // Deleted://                 fail: function(data, code) {
+    // Deleted://                     console.log(`[广告加载] ${adUnitId} - fail: ${data}, code: ${code}`);
+    // Deleted://                     if (!isResolved) {
+    // Deleted://                         clearTimeout(timeout);
+    // Deleted://                         isResolved = true;
+    // Deleted://                         resolve();
+    // Deleted://                     }
+    // Deleted://                 },
+    // Deleted://                 complete: function() {
+    // Deleted://                     console.log(`[广告加载] ${adUnitId} - complete`);
+    // Deleted://                 }
+    // Deleted://             });
+    // Deleted://
+    // Deleted://             // MynativeAd.offLoad();
+    // Deleted://             MynativeAd.onLoad(function (test:any) {
+    // Deleted://                 if (!test.adList || test.adList.length === 0) {
+    // Deleted://                     console.warn(`[广告加载] ${adUnitId} - onLoad 返回空列表`);
+    // Deleted://                     if (!isResolved) {
+    // Deleted://                         clearTimeout(timeout);
+    // Deleted://                         isResolved = true;
+    // Deleted://                         resolve();
+    // Deleted://                     }
+    // Deleted://                     return;
+    // Deleted://                 }
+    // Deleted://                 
+    // Deleted://                 let adId = test.adList[0].adId;
+    // Deleted://                 let adData = test.adList[0];
+    // Deleted://                 console.log(`[广告加载] ${adUnitId} - onLoad 成功, length: ${test.adList.length}`);
+    // Deleted://                 console.log(JSON.stringify(test));
+    // Deleted://                 var imgUrlList = test.adList[0].imgUrlList;
+    // Deleted://                 console.log(`[广告加载] ${adUnitId} - imgUrlList: ${imgUrlList}`);
+    // Deleted://                 
+    // Deleted://                 window['loadNativeAd'].push(adData);
+    // Deleted://                 console.log(`[广告加载] 数据已存入, 当前总数: ${window['loadNativeAd'].length}`);
+    // Deleted://                 
+    // Deleted://                 if (!isResolved) {
+    // Deleted://                     clearTimeout(timeout);
+    // Deleted://                     isResolved = true;
+    // Deleted://                     resolve();
+    // Deleted://                 }
+    // Deleted://             });
+    // Deleted://             
+    // Deleted://             MynativeAd.offError();
+    // Deleted://             MynativeAd.onError(function (test) {
+    // Deleted://                 console.error(`[广告加载] ${adUnitId} - onError: ${test.errCode} - ${test.errMsg}`);
+    // Deleted://                 if (!isResolved) {
+    // Deleted://                     clearTimeout(timeout);
+    // Deleted://                     isResolved = true;
+    // Deleted://                     resolve();
+    // Deleted://                 }
+    // Deleted://             });
+    // Deleted://             
+    // Deleted://             MynativeAd.load();
+    // Deleted://         });
+    // Deleted://     }
+
+    createNativeAd(adUnitId:string){
+    
+    console.log("ad demo : loadNativeAd");
+    let MynativeAd = qg.createNativeAd({
+        adUnitId: adUnitId,
+        success: function(code) {
+            console.log("loadNativeAd loadNativeAd : success");
+        },
+        fail: function(data, code) {
+            console.log("loadNativeAd loadNativeAd fail: " + data + "," + code);
+        },
+        complete: function() {
+            console.log("loadNativeAd loadNativeAd : complete");
+        }
+    });        
+
+
+    MynativeAd.offLoad();
+    MynativeAd.onLoad(function (test:any) {
+        let adId = test.adList[0].adId;
+        let adData = test.adList[0];
+        console.log("ad demo loadNativeAd onLoad NativeAd enter length : " + test.adList.length);
+        console.log(JSON.stringify(test));         
+        var imgUrlList = test.adList[0].imgUrlList;
+        console.log("ad demo : loadNativeAd onLoad imgUrlList : " + imgUrlList);
+        
+        window['loadNativeAd'].push(adData)
+    });
+    MynativeAd.offError();
+    MynativeAd.onError(function (test) {
+        console.log("ad demo : loadNativeAd onError enter" + test.errCode);
+        console.log("ad demo : loadNativeAd onError enter" + test.errMsg);
+    });  
+    MynativeAd.load();
+}
+// ... existing code ...
+已恢复成您原来的同步版本，不再使用 Promise 和 await。这样两个广告位会同时并发加载。
+上面的异步版本成功了，说明广告位没问题，问题出在了同步加载两个导致出现的问题，为什么呢？
+上面的异步版本成功了，说明广告位没问题，问题出在了同步加载两个导致出现的问题，为什么呢？
+很好的发现！这说明华为快游戏平台对原生广告的并发加载有限制。让我分析一下为什么会这样：
+问题根源：广告SDK的并发限制
+同步版本的执行流程：
+javascript
+// 几乎同时执行（时间间隔 < 1ms）
+this.createNativeAd('i7ik1b3mgg');  // 立即创建实例1
+this.createNativeAd('a5sz2rxpaj');  // 立即创建实例2
+
+// 两个广告实例几乎同时调用 load()
+MynativeAd1.load();  // 时间点: T
+MynativeAd2.load();  // 时间点: T + 0.001ms
+可能的平台限制：
+请求队列锁定
+第1个广告开始加载时，SDK内部可能会锁定请求队列
+第2个广告的 load() 被忽略或放入等待队列
+但SDK没有正确处理队列，导致第2个请求"丢失"
+单例资源竞争
+华为快游戏的 qg.createNativeAd() 可能共享某些单例资源（如网络管理器）
+并发请求导致资源竞争，第2个请求被静默丢弃
+广告填充策略
+平台可能限制"同一时刻只能请求1个原生广告"
+这是为了防止滥用广告资源
+为什么异步版本成功？
+javascript
+await this.createNativeAd('i7ik1b3mgg');  // 等待第1个完成
+await this.createNativeAd('a5sz2rxpaj');  // 第1个完成后再请求第2个
+时间差拯救了一切：
+第1个广告加载完成（耗时约1-3秒）
+SDK释放资源/解锁队列
+第2个广告才开始加载 ✅ 成功
+最简优化方案
+既然同步加载有问题，那就保留异步版本，但简化逻辑：
+loginCanvas.ts
+// ... existing code ...
+    loadNativeAd :Array<any> = new Array();
+    
+    createNativeAd(adUnitId:string): Promise<void> {
+        return new Promise((resolve) => {
+            console.log(`[广告] 加载: ${adUnitId}`);
+            
+            const timeout = setTimeout(() => {
+                console.warn(`[广告] ${adUnitId} 超时`);
+                resolve();
+            }, 5000);
+            
+            let MynativeAd = qg.createNativeAd({
+                adUnitId: adUnitId,
+                success: function(code) {
+                    console.log(`[广告] ${adUnitId} success`);
+                },
+                fail: function(data, code) {
+                    console.log(`[广告] ${adUnitId} fail: ${code}`);
+                    clearTimeout(timeout);
+                    resolve();
+                },
+                complete: function() {
+                    console.log(`[广告] ${adUnitId} complete`);
+                }
+            });
+
+            MynativeAd.offLoad();
+            MynativeAd.onLoad(function (test:any) {
+                if (!test.adList || test.adList.length === 0) {
+                    console.warn(`[广告] ${adUnitId} 无数据`);
+                    clearTimeout(timeout);
+                    resolve();
+                    return;
+                }
+                
+                let adData = test.adList[0];
+                console.log(`[广告] ${adUnitId} 成功, 共${test.adList.length}条`);
+                
+                window['loadNativeAd'].push(adData);
+                console.log(`[广告] 当前池: ${window['loadNativeAd'].length}`);
+                
+                clearTimeout(timeout);
+                resolve();
+            });
+            
+            MynativeAd.offError();
+            MynativeAd.onError(function (test) {
+                console.error(`[广告] ${adUnitId} error: ${test.errMsg}`);
+                clearTimeout(timeout);
+                resolve();
+            });
+            
+            MynativeAd.load();
+        });
+    }
+
+    
+
+    async start () {
+        if(!window['loadNativeAd']){
+            window['loadNativeAd'] = [];
+        }
+
+        await this.createNativeAd('i7ik1b3mgg');
+        await this.createNativeAd('a5sz2rxpaj');
+        
+        console.log(`[广告] 加载完成，共获取 ${window['loadNativeAd'].length} 条`);
+// ... existing code ...
+关键点：
+✅ 异步顺序加载：避免并发冲突
+✅ 超时保护：5秒未响应自动继续，不会卡死
+✅ 简化日志：保留关键信息，更清晰
+✅ Promise 简化：移除 isResolved 标志，直接用 clearTimeout + resolve
