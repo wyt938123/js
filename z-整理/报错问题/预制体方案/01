@@ -1,0 +1,1146 @@
+
+addata.ts
+
+import { Prefab, Node, instantiate, find, Layers, resources } from 'cc';
+
+interface AdInfo {
+    data: any;
+    nativeAd: any;
+}
+
+class AdData {
+    // 数据池
+    //广告实例只能使用一次
+    private _pool: AdInfo[] = [];
+
+    // 预制体缓存 { 名称: Prefab }
+    private _prefabs: Map<string, Prefab> = new Map();
+
+    // ==================== 数据管理 ====================
+
+
+    /** 添加广告数据（深拷贝） */
+    // add (data: any) {
+    //     this._pool.push({ data: data, used: false  });
+    //     console.log("[AdData] 添加数据，当前池:", this._pool.length);
+    //     return this._pool.length - 1;
+    // }
+
+    /** 获取一个未使用的数据（深拷贝） */
+    // 池子里的对象没有被销毁，没必要进行复用的，使用了就出栈就可以了
+    acquire(): any {
+        if (this._pool.length > 0)
+            return this._pool.pop();
+      
+        console.warn("[AdData] 没有可用数据");
+        return null;
+    }
+    /** 从 window 获取并添加 一条数据 */
+    addFromWindow(): any {
+        const data = window['loadNativeAd'];
+        if (data.length > 0 && this._pool.length < 4) {
+            let info = data.pop();
+            this._pool.push({ ...info });
+            return info;
+        }
+        console.warn("[AdData] 没有可用数据");
+        return null;
+    }
+
+   
+    /** 清空数据 */
+    clear() {
+        this._pool = [];
+    }
+
+    // ==================== 预制体管理 ====================
+
+    /**
+     * 需要 resource 目录下的
+     * 加载预制体（支持多个）
+     * @param name 预制体名称（用于后续获取）
+     * @param path 资源路径（不含后缀）
+     */
+    loadPrefab(name: string, path: string): Promise<Prefab> {
+        return new Promise((resolve, reject) => {
+            // 已缓存直接返回
+            if (this._prefabs.has(name)) {
+                resolve(this._prefabs.get(name)!);
+                return;
+            }
+
+            resources.load(path, Prefab, (err, prefab) => {
+                if (err) {
+                    console.error(`[AdData] 加载预制体失败: ${path}`, err);
+                    reject(err);
+                    return;
+                }
+                this._prefabs.set(name, prefab);
+                console.log(`[AdData] 预制体已缓存: ${name}`);
+                resolve(prefab);
+            });
+        });
+    }
+
+    /**
+     * 创建广告实例
+     * @param prefabName 预制体名称（需先 loadPrefab）
+     * @param data 可选，指定数据（不传则从池中获取）
+     * @param options 位置等选项
+     */
+
+    create(prefabName: string, data?: any, options?: {
+        parent?: Node;
+        x?: number;
+        y?: number;
+    }): Node {
+
+        const prefab = this._prefabs.get(prefabName);
+        if (!prefab) {
+            console.error(`[AdData] 预制体未加载: ${prefabName}`);
+            return;
+        }
+
+        // 获取数据
+        const adData = data || this.acquire();
+        if (!adData) {
+            console.error("[AdData] 没有可用的广告数据");
+            // resolve(null); return;
+        }
+
+        // 实例化
+        const node = instantiate(prefab);
+
+        // 添加到父节点
+        const parent = options?.parent || find("Canvas");
+        parent?.addChild(node);
+
+        // 设置 Layer 为 UI_2D
+        this._setLayer(node, Layers.Enum.UI_2D);
+
+        // 设置位置
+        node.setPosition(options?.x || 0, options?.y || 0, 0);
+        node.setSiblingIndex(9999);
+
+        // 调用组件的 init 方法（如果有）
+        const comp = node.getComponent('Prefabload') as any;
+        comp?.init?.(adData);
+
+        console.log(`[AdData] 创建广告: ${prefabName}`);
+        return node;
+
+    }   //adData不同，实例化后初始化的数据也是动态修改的了
+
+    /** 递归设置 Layer */
+    private _setLayer(node: Node, layer: number) {
+         if (!node) return;
+        node.layer = layer;
+        node.children.forEach(child => this._setLayer(child, layer));
+    }
+
+    createNativeAd(adUnitId:string): Promise<void> {
+            return new Promise((resolve, reject) => {
+                console.log(`[广告加载] 开始加载广告位: ${adUnitId}`);
+                
+                let isResolved = false;
+                const timeout = setTimeout(() => {
+                    if (!isResolved) {
+                        console.warn(`[广告加载] ${adUnitId} - 超时（5秒未响应）`);
+                        isResolved = true;
+                        resolve();
+                    }
+                }, 8000);
+                
+                let MynativeAd = qg.createNativeAd({
+                    adUnitId: adUnitId,
+                    success: function(code) {
+                        console.log(`[广告加载] ${adUnitId} - success`);
+                    },
+                    fail: function(data, code) {
+                        console.log(`[广告加载] ${adUnitId} - fail: ${data}, code: ${code}`);
+                        if (!isResolved) {
+                            clearTimeout(timeout);
+                            isResolved = true;
+                            resolve();
+                        }
+                    },
+                    complete: function() {
+                        console.log(`[广告加载] ${adUnitId} - complete`);
+                    }
+                });
+    
+                MynativeAd.offLoad();
+                // 超时后，其逻辑依旧会执行
+                MynativeAd.onLoad(function (test:any) {
+                    if (!test.adList || test.adList.length === 0) {
+                        console.warn(`[广告加载] ${adUnitId} - onLoad 返回空列表`);
+                        if (!isResolved) {
+                            clearTimeout(timeout);
+                            isResolved = true;
+                            resolve();
+                        }
+                        return;
+                    }
+                    
+                    let adId = test.adList[0].adId;
+                    let adData = test.adList[0];
+                    console.log(`[广告加载] ${adUnitId} - onLoad 成功, length: ${test.adList.length}`);
+                    console.log(JSON.stringify(test));
+                    var imgUrlList = test.adList[0].imgUrlList;
+                    console.log(`[广告加载] ${adUnitId} - imgUrlList: ${imgUrlList}`);
+                    try {
+                        window['loadNativeAd'].push({ nativeAd: MynativeAd, data: adData , adId: adId });
+                    console.log(`[广告加载] 数据已存入, 当前总数: ${window['loadNativeAd'].length}`);
+                    } catch (error) {
+                        console.error(`[广告加载] ${adUnitId} - 数据存入失败: ${JSON.stringify(error)}`);
+                    }
+                    
+                    
+                    if (!isResolved) {
+                        clearTimeout(timeout);
+                        isResolved = true;
+                        resolve();
+                    }
+                });
+                
+                MynativeAd.offError();
+                MynativeAd.onError(function (test) {
+                    console.error(`[广告加载] ${adUnitId} - onError: ${test.errCode} - ${test.errMsg}`);
+                    if (!isResolved) {
+                        clearTimeout(timeout);
+                        isResolved = true;
+                        resolve();
+                    }
+                });
+                //      load只能存在一次，，，否则只进行第一次，而且可能会报错
+                //      哪怕是不用实例
+                MynativeAd.load();
+            });
+        }
+
+
+
+
+
+    // create(prefabName: string, data?: any, options?: {
+    //     parent?: Node;
+    //     x?: number;
+    //     y?: number;
+    // }): Promise<Node | null> {
+    //     return new Promise<Node | null>((resolve, reject) => {
+    //         const prefab = this._prefabs.get(prefabName);
+    //         if (!prefab) {
+    //             console.error(`[AdData] 预制体未加载: ${prefabName}`);
+    //             resolve(null);
+    //             return;
+    //         }
+
+    //         // 获取数据
+    //         const adData = data || this.acquire();
+    //         if (!adData) {
+    //             console.error("[AdData] 没有可用的广告数据");
+    //             // resolve(null); return;
+    //         }
+
+    //         // 实例化
+    //         const node = instantiate(prefab);
+
+    //         // 添加到父节点
+    //         const parent = options?.parent || find("Canvas");
+    //         parent?.addChild(node);
+
+    //         // 设置 Layer 为 UI_2D
+    //         this._setLayer(node, Layers.Enum.UI_2D);
+
+    //         // 设置位置
+    //         node.setPosition(options?.x || 0, options?.y || 0, 0);
+    //         node.setSiblingIndex(9999);
+
+    //         // 调用组件的 init 方法（如果有）
+    //         const comp = node.getComponent('Prefabload') as any;
+    //        comp?.init?.(adData);
+
+    //         console.log(`[AdData] 创建广告: ${prefabName}`);
+    //         resolve(node);
+    //     });
+    // }   //adData不同，实例化后初始化的数据也是动态修改的了
+
+    // /** 递归设置 Layer */
+    // private _setLayer(node: Node, layer: number) {
+    //     node.layer = layer;
+    //     node.children.forEach(child => this._setLayer(child, layer));
+    // }
+}
+
+// 导出全局单例
+export const adData = new AdData();
+
+
+
+
+
+
+prefaload
+
+import { _decorator, Component, Node, Sprite, Label, assetManager, Texture2D, SpriteFrame, ImageAsset } from 'cc';
+const { ccclass, property } = _decorator;
+import { view } from 'cc';
+@ccclass('Prefabload')
+export class Prefabload extends Component {
+
+    @property(Sprite)
+    MD_ad_img: Sprite = null!;
+    @property(Label)
+    MD_ad_title: Label = null!;
+    @property(Sprite)
+    MD_ad_icon: Sprite = null!;
+    @property(Label)
+    MD_ad_desc: Label = null!;
+    @property(Label)
+    MD_ad_source: Label = null!;
+
+    private _data: any = null;
+    private _nativeAd: any = null;
+    private adId: string = "";
+
+    /** 初始化 - 由 adData.create() 调用 */
+    init({ nativeAd, data, adId }) {
+        this._data = data;
+        this._nativeAd = nativeAd;
+        this.adId = adId;
+        //为什么会中断后续呢？如果打印this._nativeAd['adList'][0].adId);
+        console.log("--------------------------------------------------", this.adId);
+        if (!data) {
+            console.log("数据不存在");
+
+            return;
+        }
+        // 填充数据
+        if (this.MD_ad_title) this.MD_ad_title.string = data.title || "";
+        if (this.MD_ad_source) this.MD_ad_source.string = data.source || "";
+        if (this.MD_ad_desc) this.MD_ad_desc.string = data.desc || "";
+        if (data.imgUrlList?.[0]) this.loadImg(data.imgUrlList[0], this.MD_ad_img);
+        if (data.icon) this.loadImg(data.icon, this.MD_ad_icon);
+
+        try {
+            const qgAny = (window as any).qg || (globalThis as any).qg;
+            if (!qgAny || !this._nativeAd) {
+                console.warn("qg 或 nativeAd 不存在");
+                return;
+            }
+            const sysInfo = qgAny.getSystemInfoSync();
+            console.log("sysInfo: ", sysInfo.screenWidth, sysInfo.screenHeight, sysInfo.pixelRatio);
+
+            const designSize = view.getDesignResolutionSize();
+            console.log('设计分辨率:', designSize.width, designSize.height);
+
+            const pxRatio = sysInfo.screenWidth / designSize.width;
+            const pyRatio = sysInfo.screenHeight / designSize.height;
+            console.log('像素比:', pxRatio, pyRatio);
+
+            //按钮位置边缘相接
+
+            this._nativeAd.showDownloadButton({
+                adId: this.adId,
+                // adId : this._nativeAd.adId,
+                style: {
+                    left: (sysInfo.screenWidth - 400) / 2 * sysInfo.pixelRatio ,
+                    top: (sysInfo.screenHeight/2 + 200)* sysInfo.pixelRatio ,
+                    heightType: 'normal',
+                    width: 400,
+                    fixedWidth: true,
+                    minWidth: 200,
+                    maxWidth: 500,
+                    textSize: 50,
+                    horizontalPadding: 50,
+                    cornerRadius: 22,
+                    normalTextColor: '#FFFFFF',
+                    normalBackground: '#5291FF',
+                    pressedColor: '#0A59F7',
+                   
+                    processingTextColor: '#5291FF',
+                    processingBackground: '#0F000000',
+                    processingColor: '#000000',
+                    processingStroke: 10,
+                    processingStrokeCorlor: '#0A59F7',
+                    installingTextColor: '#000000',
+                    installingBackground: '#FFFFFF',
+                    installingStroke: 15,
+                    installingStrokeCorlor: '#5291FF'
+                },
+                success: (code) => {
+                    console.log("showDownloadButton: success");
+                },
+                fail: (data, code) => {
+                    console.log("showDownloadButton fail: " + data + "," + code);
+                },
+                complete: () => {
+                    console.log("showDownloadButton : complete");
+                }
+            });
+        } catch (error) {
+            console.error("qg 或 nativeAd 不存在", error);
+        }
+
+
+
+
+
+        // 绑定点击事件
+        // this.node.on(Node.EventType.TOUCH_END, this.onClick, this);
+    }
+
+    private loadImg(url: string, sprite: Sprite) {
+        if (!url || !sprite) return;
+        assetManager.loadRemote<ImageAsset>(url, (err, image) => {
+            if (!err && sprite.isValid) {
+                const texture = new Texture2D();
+                texture.image = image;
+                const spriteFrame = new SpriteFrame();
+                spriteFrame.texture = texture;
+                sprite.spriteFrame = spriteFrame;
+                sprite.sizeMode = Sprite.SizeMode.CUSTOM;
+            }
+        });
+    }
+
+    gotoAppDetail() {
+        if (this._data && this._data.appDetailUrl) {
+            window.qg.openDeeplink({ uri: this._data.appDetailUrl })
+        }
+    }
+
+    gotoPermissionUrl() {
+        if (this._data && this._data.permissionUrl) {
+            window.qg.openDeeplink({ uri: this._data.permissionUrl })
+        }
+    }
+
+    gotPrivacyUrl() {
+        if (this._data && this._data.privacyUrl) {
+            window.qg.openDeeplink({ uri: this._data.privacyUrl })
+        }
+    }
+
+    close() {
+        this._nativeAd.hideDownloadButton({
+            adId: this.adId,
+            success: (code) => {
+                console.log("hideDownloadButton: success");
+            },
+            fail: (data, code) => {
+                console.log(" hideDownloadButton fail: " + data + "," + code);
+            },
+            complete: () => {
+                console.log("hideDownloadButton : complete");
+            }
+        });
+
+        this._nativeAd?.destroy();
+        this.node.destroy();
+    }
+
+    reportClick() {
+        this._nativeAd?.reportAdClick({
+            adId: this.adId,
+        });
+        console.log("reportClick: " + this.adId);
+    }
+}
+
+
+
+
+
+
+
+
+logincanvas
+
+// Learn cc.Class:
+//  - [Chinese] http://docs.cocos.com/creator/manual/zh/scripting/class.html
+//  - [English] http://www.cocos2d-x.org/docs/creator/en/scripting/class.html
+// Learn Attribute:
+//  - [Chinese] http://docs.cocos.com/creator/manual/zh/scripting/reference/attributes.html
+//  - [English] http://www.cocos2d-x.org/docs/creator/en/scripting/reference/attributes.html
+// Learn life-cycle callbacks:
+//  - [Chinese] http://docs.cocos.com/creator/manual/zh/scripting/life-cycle-callbacks.html
+//  - [English] http://www.cocos2d-x.org/docs/creator/en/scripting/life-cycle-callbacks.html
+
+import {_decorator, assetManager, director, Label, Node, tween, Vec3} from "cc";
+import {localConfig} from "./framework/localConfig";
+import {playerData} from "./framework/playerData";
+import {configuration} from "./framework/configuration";
+import {loading} from "./ui/common/loading";
+import {i18n} from "./i18nMaster/runtime-scripts/LanguageData";
+import {audioManager} from "./framework/audioManager";
+import {comm} from "./framework/comm";
+import {Public} from "./game/Public";
+import {tyqSDK} from "./tyqSDK/tyq-sdk";
+import TyqEventMgr from "./tyqSDK/tyq-event-mgr";
+import {AdCtl} from "./channel/AdCtl";
+import {Constants} from "./game/Constants";
+import {gameStorage} from "./framework/gameStorage";
+import {adData} from "./AdData";
+const { ccclass, property } = _decorator;
+
+i18n.init('zh');
+
+@ccclass("loginCanvas")
+export class loginCanvas extends comm {
+    /* class member could be defined like this */
+    // dummy = '';
+
+    @property(Label)
+    lbVersion: Label = null!;
+
+    @property(loading)
+    loadingUI: loading = null!;
+
+    @property(Node)
+    bottle: Node = null!;
+
+    retryTimes: number = 0;
+    uid: string = '';
+    curProgress: number = 0;
+    isLoginFinished: boolean = false;
+    isSubPackageFinished: boolean = false;
+    isConfigLoaded: boolean = false;
+
+      loadNativeAd :Array<any> = new Array();
+   
+
+  
+
+
+//      createNativeAd(adUnitId:string){
+    
+//     console.log(`[广告加载] 开始加载广告位: ${adUnitId}`);
+//     let MynativeAd = qg.createNativeAd({
+//         adUnitId: adUnitId,
+//         success: function(code) {
+//             console.log("loadNativeAd loadNativeAd : success");
+//         },
+//         fail: function(data, code) {
+//             console.log("loadNativeAd loadNativeAd fail: " + data + "," + code);
+//         },
+//         complete: function() {
+//             console.log("loadNativeAd loadNativeAd : complete");
+//         }
+//     });        
+
+
+//     MynativeAd.offLoad();
+//     MynativeAd.onLoad(function (test:any) {
+//         let adId = test.adList[0].adId;
+//         let adData = test.adList[0];
+//         console.log("ad demo loadNativeAd onLoad NativeAd enter length : " + test.adList.length);
+//         console.log(JSON.stringify(test));         
+//         var imgUrlList = test.adList[0].imgUrlList;
+//         console.log("ad demo : loadNativeAd onLoad imgUrlList : " + imgUrlList);
+        
+//         window['loadNativeAd'].push(adData)
+//     });
+//     MynativeAd.offError();
+//     MynativeAd.onError(function (test) {
+//         console.log("ad demo : loadNativeAd onError enter" + test.errCode);
+//         console.log("ad demo : loadNativeAd onError enter" + test.errMsg);
+//     });  
+//     MynativeAd.load();
+// }
+
+    // async loadAD(adUnitId:string) {
+    //     await this.createNativeAd(adUnitId);
+    // }
+
+
+   async start () {
+        window['loadNativeAd'] = this.loadNativeAd;
+        
+        // await this.createNativeAd('a5sz2rxpaj');
+        // await this.loadAD('i7ik1b3mgg');
+      
+        // profiler.hideStats();
+
+        this.loadingUI.show(0);
+
+         // 异步加载广告，但不 await，让它在后台跑
+    adData.createNativeAd('i7ik1b3mgg').catch((err) => {
+        console.error('load native ad failed:', err);
+    });
+
+        //后续将由服务器提供时间
+        playerData.instance.syncServerTime(Date.now());
+
+        // Your initialization goes here.
+        // this.curProgress = 0; //起始10%
+        // this.loadingUI.updateProgress(this.curProgress, i18n.t("main.dataLoading"));
+        localConfig.instance.loadConfig(()=>{
+            // cc.gameSpace.isConfigLoadFinished = true;
+
+            // this.lbVersion.string = `Version. ${localConfig.instance.getVersion()}`;
+            this.lbVersion.string = `版本 ${Constants.Version}`;
+            this.isConfigLoaded = true;
+            this.loadMainScene();
+        });
+
+        // this.curProgress += 5;
+        // if (this.loadingUI) {
+        //     this.loadingUI.updateProgress(this.curProgress, i18n.t("main.dataLoadOver"));
+        // }
+        //
+        // this.curProgress += 5;
+        // // this.loadingUI.updateProgress(this.curProgress, '登录中...');
+        // //其他环境下，直接开始加载资源
+        // this.curProgress += 15;
+        // this.loadingUI.updateProgress(this.curProgress, i18n.t("main.gameResourceLoading"));
+
+        //普通用户登录
+        playerData.instance.loadGlobalCache();
+        if (!playerData.instance.userId) {
+            //需要创建个账号
+            this.uid = configuration.generateGuestAccount();
+        } else {
+            this.uid = playerData.instance.userId;
+        }
+
+        this.startLogin();
+
+        this.initMusic()
+
+        this.loadGameSubPackage(() => {
+            console.log('subpackage download finished!');
+            this.isSubPackageFinished = true;
+            TyqEventMgr.ins.sendEvent("进入加载页");
+            this.loadMainScene();
+        }).then(()=>{
+            console.log("---------子包加载完毕----------")
+        })
+
+    }
+
+    share(){
+        Public.Share()
+    }
+
+    initMusic(){
+        let stat = gameStorage.getString('music', 'true');
+        console.log("----------initMusic----", stat)
+        if(stat=='true'){
+            audioManager.instance.openMusic()
+        }else{
+            audioManager.instance.closeMusic()
+        }
+
+        let stat2 = gameStorage.getString('sound', 'true');
+        if(stat2=='true'){
+            audioManager.instance.openSound()
+        }else{
+            audioManager.instance.closeSound()
+        }
+    }
+
+    startLogin () {
+        configuration.instance.setUserId(this.uid);
+
+        playerData.instance.syncServerTime(Date.now());
+        this.userLogin();
+    }
+
+    userLogin () {
+        playerData.instance.loadFromCache();
+
+        if (playerData.instance.playerInfo.createDate === undefined) {
+            //表示没有创建过
+            playerData.instance.createPlayerInfo();
+        }
+
+        console.log('login finished!');
+        this.isLoginFinished = true;
+        this.loadMainScene();
+
+    }
+
+    // downloadGameRes (cb?: Function) {
+    //     //不用加载子包，直接+30
+    //     this.curProgress += 15;
+    //     this.loadingUI.updateProgress(this.curProgress);
+    //
+    //     cb && cb();
+    // }
+
+    showSubPackageError () {
+
+    }
+
+    async loadGameSubPackage (cb?: Function) {
+        // this.loadingUI.updateProgress(this.curProgress, i18n.t("main.default"));
+        // let pos = this.bottle.position
+        // tween(this.bottle).to(0.2,{position:new Vec3(pos.x+100, pos.y, pos.z)}).start()
+        // await this.loadBundle('resources')
+        // tween(this.bottle).to(0.2,{position:new Vec3(pos.x+100, pos.y, pos.z)}).start()
+        // await this.loadBundle('font')
+        // tween(this.bottle).to(0.2,{position:new Vec3(pos.x+100, pos.y, pos.z)}).start()
+        // await this.loadBundle('prefab')
+        // tween(this.bottle).to(0.3,{position:new Vec3(0, pos.y, pos.z)}).start()
+        // await this.loadBundle('textures')
+
+        //初始化SDK
+        tyqSDK.init(()=>{
+            console.log("初始化成功");
+            tyqSDK.login();
+            //初始化云体力
+            // Constants.InitStrength
+            Constants.InitStrength= tyqSDK.getSwitchValue('tyq_init_strength', Constants.InitStrength)
+            console.log("-------Constants.InitStrength", Constants.InitStrength)
+        });
+
+        cb && cb();
+    }
+
+    async loadBundle(name){
+        return new Promise(result=>{
+            assetManager.loadBundle(name, (err,bundle)=>{
+                result(bundle);
+                this.curProgress += 5;
+                this.loadingUI.updateProgress(this.curProgress, i18n.t("main."+name));
+                if (err) {
+                    this.showSubPackageError();
+                    return console.error(err);
+                }
+                // if (err) {
+                //     console.log('加载bundle错误:',name,err)
+                //     return;
+                // }
+                // console.log("加载完成")
+            })
+        })
+    }
+
+    loadMainScene() {
+        if (!this.isConfigLoaded || !this.isLoginFinished || !this.isSubPackageFinished) {
+            //配置，子包，登录，三项没有加载成功的话要等下一项
+            return;
+        }
+
+        director.preloadScene('main', (err) => {
+            this.curProgress += 5;
+            this.loadingUI.updateProgress(this.curProgress, i18n.t("main.entering"));
+            if (!err) {
+                director.loadScene('main', function () {
+
+                });
+            }
+        });
+    }
+}
+
+
+
+maincanvas
+
+// Learn cc.Class:
+//  - [Chinese] http://docs.cocos.com/creator/manual/zh/scripting/class.html
+//  - [English] http://www.cocos2d-x.org/docs/creator/en/scripting/class.html
+// Learn Attribute:
+//  - [Chinese] http://docs.cocos.com/creator/manual/zh/scripting/reference/attributes.html
+//  - [English] http://www.cocos2d-x.org/docs/creator/en/scripting/reference/attributes.html
+// Learn life-cycle callbacks:
+//  - [Chinese] http://docs.cocos.com/creator/manual/zh/scripting/life-cycle-callbacks.html
+//  - [English] http://www.cocos2d-x.org/docs/creator/en/scripting/life-cycle-callbacks.html
+
+import { _decorator, tween, Camera, Node, Vec3, find, assetManager, Label, instantiate, Prefab, director, Layers } from "cc";
+import { loading } from "./ui/common/loading";
+import { clientEvent } from "./framework/clientEvent";
+import { Constants } from "./game/Constants";
+import { resourceUtil } from "./framework/resourceUtil";
+import { uiManager } from "./framework/uiManager";
+import { Public } from "./game/Public";
+import { comm } from "./framework/comm";
+import { AdCtl } from "./channel/AdCtl";
+import TyqEventMgr from "./tyqSDK/tyq-event-mgr";
+import { i18n } from "./i18nMaster/runtime-scripts/LanguageData";
+import { gameStorage } from "./framework/gameStorage";
+import { DataCtl } from "./game/DataCtl";
+import { tyqSDK } from "./tyqSDK/tyq-sdk";
+const { ccclass, property } = _decorator;
+
+import { adData } from './AdData';
+
+@ccclass("mainCanvas")
+export class mainCanvas extends comm {
+    /* class member could be defined like this */
+    // dummy = '';
+    @property(loading)
+    loadingUI: loading = null!;
+
+    @property(Label)
+    lbVersion: Label = null!;
+
+    @property(Node)
+    tip: Node = null;
+
+    @property(Node)
+    bottle: Node = null;
+
+    @property(Camera)
+    CameraNode: Camera = null;
+
+    @property(Label)
+    StrengthTimeLab: Label = null;
+
+    @property(Label)
+    CurStrengthLab: Label = null;
+
+
+    // @property(Prefab)
+    // adPrefab: Prefab = null;
+
+
+
+    curProgress: number = 0;
+    isFirstLoad: boolean = true; //首次加载
+    calTime: number = 0
+    calPlayTime: number = 0 //记录游戏中的时长
+    protoPosX: number = 0 //原始位置
+
+    adCnt: number = 0
+
+   async start() {
+        clientEvent.on(Constants.Events.updateStrength, this.updateStrength, this);
+        this.lbVersion.string = `版本 ${Constants.Version}`;
+        this.initStrength()
+
+        AdCtl.instance.InitAdPage()
+
+        //设置摄像机
+        Public.MainCamera = this.CameraNode
+
+        Public.isShowMainCanvas = true
+
+        //首次进来，起始50%（前面为登录加载）
+        this.loadingUI.show(this.curProgress);
+
+        await adData.loadPrefab('nativeAd', 'prefab/ui/NvAd-md'); 
+
+ 
+        setTimeout(() => { adData.addFromWindow(); adData.create('nativeAd', null, { x: 0, y: 0 }); }, 12000); // 原生广告
+        // setTimeout(() => { adData.addFromWindow(); adData.create('nativeAd', null, { x: -500, y: 0 }); }, 13000); // 原生广告
+
+
+    //     console.log("GameMain5 start, 准备检查广告预制体...");
+    //     console.log("adPrefab 值:", this.adPrefab);
+    //     if (this.adPrefab) {
+    //         console.log("广告预制体存在，开始实例化");
+
+    //         new Promise<void>((resolve, reject) => {
+    //             setTimeout(() => { resolve() }, 10000)
+    //         }).then(() => {
+    //             let adNode = instantiate(this.adPrefab);
+    //             console.log("实例化后的节点:", adNode, "name:", adNode.name);
+    //             // 直接添加到 Canvas 节点下，确保在正确的 UI 层级
+    //             let canvas = find("Canvas");
+    //             console.log("查找 Canvas 节点结果:", canvas);
+    //             if (canvas) {
+    //                 console.log("找到 Canvas 节点，开始添加子节点...");
+    //                 canvas.addChild(adNode);
+    //                 console.log("子节点添加成功");
+
+    //                 // // 设置 Layer 为 UI_2D（关键！）
+    //                 // adNode.layer = Layers.Enum.UI_2D;
+    //                 // // 递归设置所有子节点的 Layer
+    //                 // const setLayerRecursively = (node: Node) => {
+    //                 //     node.layer = Layers.Enum.UI_2D;
+    //                 //     node.children.forEach(child => setLayerRecursively(child));
+    //                 // };
+    //                 // setLayerRecursively(adNode);
+    //                 // console.log("已设置广告节点及其子节点的 Layer 为 UI_2D");
+
+    //                 adNode.setPosition(0, 0, 0); // 设置完整的 3D 位置
+    //                 adNode.setSiblingIndex(9999); // 使用更大的值确保在最上层
+    //                 adNode.active = true; // 确保节点激活
+    //                 console.log("广告预制体已添加到 Canvas 节点:", adNode.name, "位置:", JSON.stringify(adNode.position), "active:", adNode.active, "parent:", adNode.parent?.name, "layer:", adNode.layer);
+
+    //                 // 检查子节点
+    //                 console.log("广告节点的子节点数量:", adNode.children.length);
+    //                 if (adNode.children.length > 0) {
+    //                     console.log("广告节点的子节点:", adNode.children.map(child => `${child.name}(active:${child.active}, layer:${child.layer})`).join(", "));
+    //                 }
+    //             } else {
+    //                 console.error("未找到 Canvas 节点！");
+    //             }
+
+
+    //         });
+
+
+    //     } else {
+    //         console.error("GameMain5 上的 adPrefab 属性未绑定，请检查编辑器！");
+    //     }
+
+
+    }
+
+    start2() {
+        this.protoPosX = this.bottle.position.x
+        // let pos = this.bottle.position
+        // tween(this.bottle).to(2,{position:new Vec3(pos.x+900, pos.y, pos.z)}).start()
+        // console.log("------pos ---------0",pos)
+
+        //加载所有主界面需要的字体，预制体，图集
+        this.loadAllMainRes(() => {
+            console.log("------加载资源完毕，进入广告加载阶段---------")
+        });
+    }
+
+    share() {
+        Public.Share()
+    }
+
+    initStrength() {
+        let strength = gameStorage.getInt(Constants.CacheDataKey.strength, -1)
+        if (strength == -1) {//没有体力
+            gameStorage.setInt(Constants.CacheDataKey.strength, 5)
+        }
+        this.updateStrength()
+    }
+
+    //隔日刷新体力
+    refreshStrength(strength, StrengthRecoverTimeCal) {
+        this.StrengthTimeLab.string = Public.TimerFormat1(Constants.StrengthRecoverTime - StrengthRecoverTimeCal)
+        this.CurStrengthLab.string = strength + ""
+        let lastUpdate = gameStorage.getString(Constants.CacheDataKey.strengthRefreshTime, null)
+        if (lastUpdate == null) {
+            gameStorage.setString(Constants.CacheDataKey.strengthRefreshTime, Public.DateFormat(new Date(), "YYYY/mm/dd"))
+        }
+        if (lastUpdate != Public.DateFormat(new Date(), "YYYY/mm/dd")) {
+            console.log("@@@@@@@@@@@@@@@@ 隔日刷新体力------", lastUpdate)
+            gameStorage.setInt(Constants.CacheDataKey.strength, Constants.InitStrength)
+            gameStorage.setInt(Constants.CacheDataKey.strengthAdTimes, 0)
+            gameStorage.setString(Constants.CacheDataKey.strengthRefreshTime, Public.DateFormat(new Date(), "YYYY/mm/dd"))
+        }
+    }
+
+    updateStrength() {
+        let StrengthRecoverTimeCal = gameStorage.getInt(Constants.CacheDataKey.strengthRecoverTimeCal)
+        let strength = gameStorage.getInt(Constants.CacheDataKey.strength)
+        this.refreshStrength(strength, StrengthRecoverTimeCal)
+    }
+
+    OnClickPrompt() {
+        uiManager.instance.showDialog(Constants.Dialogs.strengthPrompt)
+    }
+
+    update(dt) {
+        this.calTime += dt
+        if (this.calTime > 2) {
+            if (Public.isRealLoadingEnd == true) {
+                this.calTime = -1000
+                // clientEvent.dispatchEvent(Constants.Events.finishLoading);
+                //等进度条加载完后展示主界面
+                // this.showMainUI();
+                find("Canvas").getChildByName("loading").active = true
+                find("Canvas").getChildByName("loading").getComponent(loading).showBtn()
+            }
+        }
+        if (Public.isRealLoadingEnd == false) {
+            if (this.adCnt >= 1) {
+                console.log("------加载完毕---------")
+                Public.isRealLoadingEnd = true
+                TyqEventMgr.ins.sendEvent("进入游戏");
+            }
+        }
+
+        //每10秒记录一次
+        this.calPlayTime += dt
+        if (this.calPlayTime > 1) {
+            let oldVal = gameStorage.getInt(Constants.CacheDataKey.playTime)
+            let StrengthRecoverTimeCal = gameStorage.getInt(Constants.CacheDataKey.strengthRecoverTimeCal)
+            oldVal += this.calPlayTime
+            StrengthRecoverTimeCal += this.calPlayTime
+            // console.log("---this.calPlayStrengthTime----playTime-", StrengthRecoverTimeCal, oldVal)
+            gameStorage.setInt(Constants.CacheDataKey.playTime, oldVal)
+            // configuration.instance.setGlobalData()
+            this.calPlayTime = 0
+
+            //如果时间超过5分钟，那么回复1点体力
+            let strength = gameStorage.getInt(Constants.CacheDataKey.strength)
+            // if(StrengthRecoverTimeCal>=5*60){
+            //     DataCtl.instance.AddStrength(1)
+            //     gameStorage.setInt(Constants.CacheDataKey.strengthRecoverTimeCal, 0)
+            // }else{
+            //     gameStorage.setInt(Constants.CacheDataKey.strengthRecoverTimeCal, StrengthRecoverTimeCal)
+            // }
+            this.refreshStrength(strength, StrengthRecoverTimeCal)
+        }
+
+    }
+
+    onEnable() {
+        clientEvent.on(Constants.Events.updateLoading, this.updateLoadingProgress, this);
+        clientEvent.on(Constants.Events.finishLoading, this.finishLoading, this);
+
+    }
+
+    onDisable() {
+        clientEvent.off(Constants.Events.updateLoading, this.updateLoadingProgress, this);
+        clientEvent.off(Constants.Events.finishLoading, this.finishLoading, this);
+    }
+
+    updateLoadingProgress(progress: number, tips: string) {
+        if (!this.isFirstLoad) {
+            this.curProgress += progress;
+        } else {
+            this.curProgress += Math.floor(progress / 2);  //首次加载是跟登录一块的，这样起始是50%
+        }
+        this.loadingUI.updateProgress(this.curProgress, tips);
+    }
+
+    finishLoading() {
+        console.log("-----------接收到加载完毕的请求----")
+        this.start2()
+        // this.loadingUI.node.active = false;
+    }
+
+    async loadAllMainRes(callback: Function) {
+
+        let pos = this.bottle.position
+        this.protoPosX += 100
+        tween(this.bottle).to(0.2, { position: new Vec3(this.protoPosX, pos.y, pos.z) }).start()
+        await this.loadBundle('resources')
+        await this.delayTime(0.2)
+        this.protoPosX += 100
+        tween(this.bottle).to(0.2, { position: new Vec3(this.protoPosX, pos.y, pos.z) }).start()
+        // console.log("----pos---2", pos)
+        await this.loadBundle('font')
+        await this.delayTime(0.2)
+        this.protoPosX += 100
+        tween(this.bottle).to(0.2, { position: new Vec3(this.protoPosX, pos.y, pos.z) }).start()
+        // console.log("----pos---3", pos)
+        await this.loadBundle('prefab')
+        await this.delayTime(0.2)
+        this.protoPosX += 100
+        tween(this.bottle).to(0.2, { position: new Vec3(this.protoPosX, pos.y, pos.z) }).start()
+        // console.log("----pos---4", pos)
+        await this.loadBundle('textures')
+        await this.delayTime(0.2)
+
+        let arrPreload = Constants.Prefabs
+        let cur = 0;
+        let total = 100
+        let pVal = 1 / arrPreload.length
+        for (let i = 0; i < arrPreload.length; i++) {
+            cur++;
+            this.protoPosX += total * pVal
+            tween(this.bottle).to(0.2, { position: new Vec3(this.protoPosX, pos.y, pos.z) }).start()
+            await resourceUtil.getUIPrefabResAsync(arrPreload[i])
+            await this.delayTime(0.2)
+            // await this.delayTime(0.5)
+            // clientEvent.dispatchEvent(Constants.Events.updateLoading, pVal);
+        }
+
+        //加载广告实例
+        AdCtl.instance.InitParam()
+        this.protoPosX += 480
+        tween(this.bottle).to(0.2, { position: new Vec3(this.protoPosX, pos.y, pos.z) }).start()
+
+        AdCtl.instance.InitCreateRewardVideoAd().then(() => {
+            // this.adCnt+=1
+        })
+        AdCtl.instance.InitCreateInterstitialAd().then(() => {
+            this.adCnt += 1
+        })
+        AdCtl.instance.InitCreateBannerAd()
+
+        // this.loadCustomAd()
+
+        // this.protoPosX+=100
+        // tween(this.bottle).to(0.2,{position:new Vec3(this.protoPosX, pos.y, pos.z)}).start()
+        // await this.delayTime(0.2)
+        // await AdCtl.instance.InitCreateRewardVideoAd()
+        //
+        // this.protoPosX+=100
+        // tween(this.bottle).to(0.2,{position:new Vec3(this.protoPosX, pos.y, pos.z)}).start()
+        // await this.delayTime(0.2)
+        // await AdCtl.instance.InitCreateInterstitialAd()
+        //
+        // this.protoPosX+=100
+        // tween(this.bottle).to(0.2,{position:new Vec3(this.protoPosX, pos.y, pos.z)}).start()
+        // await this.delayTime(0.2)
+        // await AdCtl.instance.InitCreateCustomAdMainUI()
+        //
+        // this.protoPosX+=80
+        // tween(this.bottle).to(0.2,{position:new Vec3(this.protoPosX, pos.y, pos.z)}).start()
+        // await this.delayTime(0.2)
+        // await AdCtl.instance.InitCreateMainCanvas()
+
+        callback && callback()
+
+        //加载所有UI窗口到隐藏节点
+        // uiManager.instance.loadDialog(Constants.Dialogs.success)
+        // uiManager.instance.loadDialog(Constants.Dialogs.prompt)
+        // uiManager.instance.loadDialog(Constants.Dialogs.promptRes)
+        // for(let key in Constants.Dialogs){
+        //     uiManager.instance.showDialog(Constants.Dialogs[key], null, null, this.node.getChildByName("panelRoot"), false)
+        // }
+        // uiManager.instance.showDialog(Constants.Dialogs.success, null, null, this.node.getChildByName("panelRoot"), false)
+        // uiManager.instance.showDialog(Constants.Dialogs.prompt, null, null, this.node.getChildByName("panelRoot"), false)
+        // uiManager.instance.showDialog(Constants.Dialogs.promptRes, null, null, this.node.getChildByName("panelRoot"), false)
+
+
+        // resourceUtil.getPrefabBatch(arrPreload, (arg)=>{
+        //     cur++;
+        //     if (cur <= 15) {
+        //         clientEvent.dispatchEvent('updateLoading', 2);
+        //     }
+        // }, ()=>{
+        //     if (cur <= 15) {
+        //         clientEvent.dispatchEvent('updateLoading', 30 - cur * 2);
+        //     }
+        //     callback && callback();
+        // });
+    }
+
+    async loadCustomAd() {
+        //异步的同步方式去加载原生广告
+        await AdCtl.instance.InitCreateCustomAdMainUI().then(() => { })
+        await AdCtl.instance.InitCreateMainCanvas().then(() => {
+            console.log("原生广告加载完毕")
+        })
+    }
+
+    OnClickStartGame() {
+        TyqEventMgr.ins.sendEvent("进入游戏");
+        this.showMainUI()
+    }
+
+    showMainUI() {
+        //一开始加载主界面
+        this.loadingUI.node.active = false;
+        uiManager.instance.showDialog(Constants.Dialogs.mainUI);
+        // AdCtl.instance.HideAllCustomAD()
+        Public.isShowMainCanvas = false
+    }
+
+    async loadBundle(name) {
+        return new Promise(result => {
+            assetManager.loadBundle(name, (err, bundle) => {
+                result(bundle);
+                this.curProgress += 5;
+                this.loadingUI.updateProgress(this.curProgress, i18n.t("main." + name));
+                if (err) {
+                    return console.error(err);
+                }
+                // if (err) {
+                //     console.log('加载bundle错误:',name,err)
+                //     return;
+                // }
+                // console.log("加载完成")
+            })
+        })
+    }
+
+    // update (deltaTime: number) {
+    //     // Your update function goes here.
+    // }
+}

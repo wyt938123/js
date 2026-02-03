@@ -1,0 +1,99 @@
+
+即使有了像 Vuex 这样的状态管理工具，Service 层依然非常有必要。
+
+在成熟的项目架构中，Vuex (Store) 和 Service 承担着完全不同的职责：
+
+1. 职责划分（核心区别）
+Vuex / Store (状态管理)：
+
+像“数据库”：专门负责存储数据。
+核心功能：让数据在多个组件之间响应式地同步。
+原则：尽可能“薄”。只负责存取，不应该包含复杂的业务逻辑。
+Service (业务逻辑层)：
+
+像“加工厂”：负责处理具体的业务逻辑和动作。
+核心功能：处理 API 请求、数据转换（接口数据转为 UI 格式）、调用三方 SDK（如广告、支付）、处理复杂的定时器或轮询。
+原则：包含项目所有的“怎么做”。
+2. 为什么有了 Vuex 还需要 Service？
+A. 复杂逻辑的剥离
+比如你的 ad-service.js（广告服务）：
+
+它需要判断设备环境。
+决定何时拉取广告、何时展示视频缓存、处理播放失败重试、上报埋点。
+如果在 Vuex 里写这些：Vuex 的 Actions 会变得极其臃肿，难以维护。
+在 Service 里写：Vuex 只负责存一个 isAdLoading: true/false，Service 负责复杂的加载流程。
+B. 跨平台/非 UI 环境的复用
+Service 是纯 JavaScript。如果你的业务逻辑放在 Service 中：
+
+你可以在不涉及 UI 的地方（比如快应用的后台任务、独立脚本中）直接引用 Service。
+Vuex 是深度绑定在 UI 框架（Vue 实例）上的，脱离了 Vue 环境就无法使用。
+C. 副作用管理
+Service 更适合处理“副作用”（Side Effects）：
+
+网络短线重连逻辑（如你的 withRetry）。
+系统权限申请流程。
+文件系统读写。
+这些逻辑如果塞进 Vuex 这种强调“单一数据流”的模式中，会增加调试难度。
+3. 未来的标准模式代码示例
+如果你同时拥有两者，完美的调用链应该是这样的：
+
+组件 (View)：点击按钮，调用 Service 方法。
+$adService.loadVideoAd()
+服务 (Service)：执行逻辑（请求接口、计算逻辑）。
+const data = await request(...)
+// 逻辑处理完后，更新 Store
+store.commit('SET_AD_DATA', data)
+状态管理 (Store)：仅仅更新数据并通知 UI。
+state.adData = data
+总结
+Vuex 解决的是：“数据变了，页面怎么跟着变？”
+Service 解决的是：“点击按钮后，这一系列复杂的操作该怎么执行？”
+你项目中现在的 pubsub-service.js 充当了一个轻量级的消息中心，它在一定程度上代替了 Vuex 的“跨组件通知”能力。即使你以后引入了更高级的状态管理工具，你的各种 xxx-service.js 依然是代码逻辑的灵魂。
+
+
+
+
+
+快应用本身没有像 Vuex 那样内置的「全局响应式状态管理」库，但有几种常用实践可实现全局状态共享与可控更新：
+
+使用 app.$def / 全局对象（non-reactive）
+
+优点：简单，适合存放静态配置或少变的全局常量。
+缺点：不是响应式，修改后不会自动通知组件或触发 computed 更新。
+单例 Service + 发布/订阅（推荐，与你项目中已有的 pubsub-service.js 配合）
+
+优点：集中管理状态、易于测试、避免重复初始化；通过 pubsub 发广播来通知组件更新。
+
+
+
+// 发布
+$pubsub.publish('user:update', user)
+
+// 订阅（组件）
+onInit() {
+  this._un = $pubsub.subscribe('user:update', user => {
+    this.user = user
+    this.$apply?.() // 若框架需要手动触发视图更新
+  })
+}
+onDestroy() {
+  this._un && this._un()
+}
+
+
+实现一个小型「响应式 store」
+
+如果需要组件自动响应状态变化，可用 observable/发布订阅封装一个 store（类似 Vue.observable）：
+
+
+// 简单 store（文件任意）
+const state = { user: null }
+const subs = new Set()
+export default {
+  getState() { return state },
+  setState(partial) {
+    Object.assign(state, partial)
+    subs.forEach(fn => fn(state))
+  },
+  subscribe(fn) { subs.add(fn); return () => subs.delete(fn) }
+}

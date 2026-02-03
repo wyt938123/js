@@ -1,0 +1,145 @@
+基于 AdLoader.ts 的代码逻辑，以下是你可能会遇到的几种报错情况、原因分析以及修复方案：
+
+1. 远程图片加载死循环导致栈溢出
+情况：
+如果不小心传入了错误的图片 URL，或者用户网络断开，loadPics 方法中的递归调用会导致无限重试。
+
+代码逻辑问题：
+在 loadPics 中，如果发生 err，代码会 setTimeout 然后再次调用 loadPics。如果网络一直不通或 URL 404，这会形成无限循环，虽然有 300ms 延迟，但仍会消耗性能或导致逻辑卡死。
+
+// ...existing code...
+        assetManager.loadRemote(remoteUrl, {ext: '.image'}, (err, imageAsset)=>{
+            if (err) {
+                console.log('[loadRemote][err]', JSON.stringify(err))
+                setTimeout(() => {
+                    vm.loadPics(remoteUrl, key) // <--- 无限递归风险
+                }, 300)
+                return;
+            }
+// ...existing code...
+
+
+
+
+解决方案：
+增加重试次数限制（例如最多重试 3 次）。
+
+
+
+// ...existing code...
+    // 修改函数签名，增加 retryCount 参数
+    loadPics(remoteUrl, key, retryCount = 0){  
+        if(!remoteUrl) return
+        let vm = this
+        // 增加 .webp 或 .image 后缀处理，防止 ext 错误
+        let ext = remoteUrl.endsWith('.webp') ? '.webp' : '.image';
+        
+        assetManager.loadRemote(remoteUrl, {ext: ext}, (err, imageAsset)=>{
+            if (err) {
+                console.log('[loadRemote][err]', JSON.stringify(err))
+                // 限制重试次数，比如 3 次
+                if (retryCount < 3) {
+                    setTimeout(() => {
+                        vm.loadPics(remoteUrl, key, retryCount + 1)
+                    }, 300)
+                } else {
+                    console.warn(`[AdLoader] Load failed after 3 retries: ${remoteUrl}`);
+                }
+                return;
+            }
+// ...existing code...
+
+
+2. renderMapping 键值匹配失败 (Undefined Error)
+情况：
+控制台报错：Cannot read property 'box' of undefined 或 Cannot read property 'string' of undefined。
+
+代码逻辑问题：
+在 renderNativeAd 或 hideNativeAd 中，你直接使用了 this.renderMapping[e.key]。如果后端下发的 e.key（例如 "LeftBanner"）不在你的 renderMapping 定义中，o 就会是 undefined，导致后续访问 o.box 报错。
+
+
+// ...existing code...
+    public renderNativeAd(e) {
+        // ...
+        let o = this.renderMapping[e.key] // <--- 如果 e.key 不存在，o 为 undefined
+        this[o.title].string = e.title || ''; // <--- 报错
+// ...existing code...
+
+
+// ...existing code...
+    public renderNativeAd(e) {
+        console.log('[renderNativeAd]', e.key)
+        
+        // 防御性检查
+        let o = this.renderMapping[e.key];
+        if (!o) {
+            console.warn(`[AdLoader] Unknown ad key: ${e.key}`);
+            return;
+        }
+
+        if(e.key != 'pullNativeAd') {
+// ...existing code...
+
+3. 编辑器/浏览器预览时 window.qg 报错
+情况：
+你在点击 "拒绝" 按钮（onClickRefuseBtn）时，编辑器或浏览器控制台报错：window.qg is not defined 或 Cannot read property 'exitApplication' of undefined。
+
+代码逻辑问题：
+window.qg 是华为快游戏（Quick Game）特有的 API，在 PC 浏览器或 Cocos 编辑器环境下不存在。
+
+
+// ...existing code...
+    onClickRefuseBtn(event: EventTouch) {
+        if (window['qg'] && window['qg'].exitApplication) {
+            window['qg'].exitApplication({
+                success : function () {
+                    console.log("exitApplication success" );
+                },
+                fail:function(){
+                    console.log("exitApplication fail");
+                },
+                complete:function() {
+                    console.log("exitApplication complete");
+                }
+            });
+        } else {
+            console.log("模拟器/浏览器无法退出游戏");
+            // 可选：在测试环境模拟关闭效果
+            // game.end(); 
+        }
+    }
+// ...existing code...
+
+
+4. window.Global 未定义导致的启动崩溃
+情况：
+start 方法报错 Cannot read property 'initialize' of undefined，导致界面无法加载。
+
+代码逻辑问题：
+虽然你在 onLoad 中检查了 window.Global，但在 start 中使用了 window.Global.initialize?.ADpageSwitch。如果 window.Global 在 start 执行时恰好因为某些脚本加载顺序问题为 null/undefined，且没有用可选链 ?. 保护最外层的对象，就会崩。
+
+解决方案：
+统一使用可选链，确保全局对象存在。
+
+
+
+
+// ...existing code...
+    async start() {
+        // 确保 window.Global 存在
+        if(!window.Global?.initialize?.ADpageSwitch) {
+            if(!window.$IsLogin) {
+// ...existing code...
+        } else {
+            this.bg.node.active = true;
+            // ...
+            this.pop.node.active = true;
+            this.switchBackgroundImage(false) // 注意：原代码这里没传参数，switchBackgroundImage 里 e 可能是 undefined
+            
+            // 修复：增加可选链保护
+            if(window.Global?.initialize?.FakeNavigation) {
+                this.bot.node.active = true;
+            }
+        }
+    }
+// ...existing code...

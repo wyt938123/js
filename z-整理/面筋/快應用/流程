@@ -1,0 +1,87 @@
+基于你提供的文件目录结构（scripts/, manifest.json, quickapp.config.js，以及 income/withdraw 页面），这是一个非常典型的**“网赚/娱乐类快应用矩阵”**项目。
+
+这类项目通常涉及多渠道分发（马甲包）、流量变现（广告）、用户激励（金币/提现）。
+
+以下是为你梳理的三大核心流程，这些内容能让你在面试中展现出你不仅关注代码细节，更具备宏观的工程视野。
+
+1. 业务流程 (Business Flow)
+核心逻辑：流量引入 -> 内容消费/留存 -> 商业变现
+
+这个项目的业务本质是通过视频内容吸引用户，通过任务和广告产生收益。
+
+启动与分流（Entry & Dispatch）
+用户从应用商店、外部链接或负一屏卡片进入。
+服务端控制开关：App 启动时会请求后端配置。如果是“审核状态”，展示纯净的视频内容（为了过审）；如果是“正式状态”，开启 pages/income（赚钱）、pages/withdraw（提现）和高频广告入口。
+内容消费（Consumption）
+用户在 pages/spa 或 pages/home 浏览视频流。
+A/B Test 展示：根据你的 video-card 逻辑，不同画像的用户看到不同样式的卡片（提升点击率）。
+激励交互（Gamification）
+触发点：用户滑动视频、签到、摇一摇（shakeRedPage）。
+奖励：发放金币或红包，数据存入 service.account 或本地 Storage。
+变现闭环（Monetization）
+广告展示：在操作关键节点（如领取红包前、视频播放前），调用 YlhAds (腾讯优量汇) 或其他广告 SDK 展示激励视频。
+提现：用户去 pages/withdraw 申请提现，资金流转。
+挽留机制（Retention）
+用户尝试退出 App 或点击返回键时，触发 sure-pop（拦截弹窗），用“再看一分钟得 1 元”之类的文案留住用户。
+2. 执行流程 (Execution/Runtime Flow)
+核心逻辑：引擎初始化 -> 路由接管 -> 页面渲染 -> 交互响应
+
+当用户点击图标后的代码运行顺序：
+
+基座启动与配置读取
+快应用引擎读取 src/manifest.json。
+确认包名 com.dd.dynamic、版本号、以及声明的权限（system.fetch, service.ad 等）。
+确定入口页面：router.entry -> pages/spa。
+App 级初始化 (app.ux)
+执行 app.ux 中的 onCreate。
+AOP 注入：src/aop/app-init.js 会被自动执行，可能用于全局变量注入（global.brand）、埋点 SDK 初始化、以及劫持全局路由跳转（做统一的错误处理或跳转拦截）。
+页面加载生命周期
+进入 pages/spa/index.ux。
+onInit：接收路由参数，发起首屏数据请求（system.fetch）。此时页面是空白的或骨架屏。
+onReady：页面 DOM 结构生成完毕。
+onShow：页面显示。此时可能会触发 SplashAd（开屏广告）。
+组件渲染与数据流
+数据返回后，通过数据驱动（Data-Driven）更新 video-card 列表。
+子组件挂载：video-card 根据 groupType 动态 import 对应的子 UX 文件（如 groupa-video-card.ux）。
+后台保活与销毁
+当应用切换到后台，触发 onHide，此时需要暂停视频播放、停止定时器以节省内存。
+被系统强杀或用户彻底退出，触发 onDestroy。
+3. 打包流程 (Build/Packaging Flow)
+这是你项目中工程化最重的部分（难点），由 scripts/ 和 quickapp.config.js 控制。
+
+由于快应用需要上架 Oppo、Vivo、小米、华为等不同厂商的商店，这套代码是一套**“多端同构 + 马甲包”**的构建系统。
+
+命令触发：通常是终端执行 npm run build:oppo 或 npm run release。
+
+第一阶段：环境准备 (Pre-Build)
+品牌与变量注入：
+运行 scripts/brandConf.js。脚本会根据传入的参数（如 oppo），去读取 scripts/brandConf.json，获取该品牌对应的特定配置（如 AppID、AppKey、统计 ID）。
+文件清理：
+scripts/reset.js 清理 build 和 dist 目录，确保无缓存残留。
+第二阶段：编译与混淆 (Webpack Compilation)
+Webpack 启动：加载 quickapp.config.js。
+代码转换：
+hap-toolkit 加载器：将 .ux 文件编译成快应用引擎能识别的 .js 和 .css (json/css/js 结构)。
+Babel 转译：将 ES6+ 语法转译为 ES5。
+代码混淆 (Obfuscator - 核心安全做工)：
+postHook 钩子触发：在 quickapp.config.js 的 postHook 函数中，根据 bannerData 配置。
+执行 obfuscatorloader.js：对核心业务逻辑（尤其是 src/helper/adnet 广告逻辑、网络请求逻辑）进行AST 级别的混淆。
+目的：
+防止代码被反编译抄袭。
+过审：通过混淆字符串（String Array）、打乱控制流，规避应用商店的机器代码查重（马甲包常见手段）。
+第三阶段：生成与签名 (Packaging)
+Manifest 动态重写：
+构建脚本可能会修改 dist/ 目录下的 manifest.json，动态替换 package 包名（比如把 com.dd.dynamic 换成 com.dd.video.oppo），实现一套代码打出几十个不同的包。
+打包 RPK：
+将所有编译好的资源压缩成 .rpk 文件。
+签名 (Signing)：
+使用 sign/ 目录下的私钥（.pem 文件）对 RPK 进行签名。
+注意：Debug 包和 Release 包使用的签名文件通常不同。
+第四阶段：产物输出
+最终在 dist/ 目录下生成 com.dd.dynamic.release.rpk。此文件即可上传到厂商后台。
+总结：如何向面试官描述
+“这个项目是一套通过配置驱动的多端工程化架构。
+
+在业务上，它是一个基于流量变现的视频流应用，通过服务端下发配置实现审核模式与运营模式的动态切换，利用 A/B Test 组件（如多态 video-card）最大化用户收益。
+
+在工程上，我们维护了一套基于 Webpack 的构建流。最大的亮点是自动化混淆与多渠道打包。我们在 quickapp.config.js 的 postHook 阶段接入了自定义的 obfuscatorloader，这不仅保护了核心广告 SDK 的逻辑安全，还支持通过命令行参数（如 npm run build:oppo）一键生成特定厂商配置的安装包，极大地提高了发版效率。”
