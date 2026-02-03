@@ -109,3 +109,331 @@ clearTimeout(timer);
 const stopTimer = getTime(..., 1000);
 stopTimer(); // 直接调用返回的函数来停止
 
+
+
+
+
+
+在 01-ob监听.html 中，主要存在以下几个问题：
+
+1. setAttribute 的返回值问题 (致命错误)
+setAttribute 方法返回的是 undefined，而不是元素本身。这导致 checkdom 变量变成了 undefined，随后的 checkdom.appendChild(div) 会报错导致脚本停止执行。
+
+2. 执行顺序问题
+目前代码先调用了 creaetDom(classname)，然后才调用 checkRendeerTime(...)。
+
+MutationObserver 是在 checkRendeerTime 中启动的。
+如果 DOM 已经创建并挂载完毕再开始监听，MutationObserver 可能无法捕获到已经发生的变动。
+3. 函数名拼写错误
+creaetDom 应该是 createDom，checkRendeerTime 应该是 checkRenderTime（虽然不影响运行，但建议修正）。
+
+修复建议
+我将为你修复 setAttribute 的逻辑错误，并调整执行顺序，确保监听器在 DOM 操作之前启动。
+
+Edited
+01-ob监听.html
+代码中主要存在以下几个问题：
+
+setAttribute 的返回值问题：
+在 creaetDom 函数中，document.createElement('div').setAttribute('class', classname) 返回的是 undefined，而不是刚刚创建的 DOM 元素。这导致变量 checkdom 为 undefined，后续执行 checkdom.appendChild(div) 时会抛出错误。
+
+执行顺序逻辑错误：
+在代码底部，你先调用了 creaetDom(classname)，然后才调用 checkRendeerTime 启动监听。由于 creaetDom 是同步执行的，当监听器启动时，DOM 节点已经添加完毕，MutationObserver 很有可能无法捕捉到这次节点的增加事件。
+
+拼写错误（建议修改）：
+
+creaetDom 应为 createDom。
+checkRendeerTime 应为 checkRenderTime。
+我已经修复了这些问题，修复后的代码如下：
+
+ function creaetDom(classname) {
+            const checkdom = document.createElement('div'); // 分开编写，确保获取到元素
+            checkdom.setAttribute('class', classname);
+            for (let i = 0; i < 1000; i++) {
+                const div = document.createElement('div');
+                div.innerText = '这是第' + i + '个div';
+                checkdom.appendChild(div);
+            }
+            document.body.appendChild(checkdom);
+        }
+
+
+        let classname = 'render-check-' + Date.now();
+        
+        // 1. 先启动监听器
+        checkRendeerTime(classname, function (time) {
+            console.log('渲染时间为：' + time + 'ms');
+        });
+
+        // 2. 再执行 DOM 创建逻辑
+        creaetDom(classname);
+
+
+
+
+为什么控制台总是打印3次？
+
+控制台打印 3 次的原因在于：
+
+MutationObserver 的触发频率：MutationObserver 是微任务触发的。虽然你在代码中是一次性将 checkdom 添加到 body 中，但浏览器环境、插件（如广告过滤、开发工具）或者你使用的“实时预览”工具可能会在短时间内对 DOM 进行多次微小变动（比如注入脚本或样式的微调）。
+requestAnimationFrame 与 disconnect 的时机：你在 requestAnimationFrame 的回调函数内部才调用 observer.disconnect()。如果在第一个 requestAnimationFrame 执行之前，MutationObserver 又探测到了其他 DOM 变动（哪怕与你的节点无关，只要 changNode 依然存在），它就会再次安排一个新的 requestAnimationFrame。
+任务堆积：当第一个 rAF 执行并调用 disconnect 时，另外两个已经排队的 rAF 回调仍会继续执行，导致最终打印了 3 次。
+解决方案
+增加一个状态锁（标识位），确保 callback 只被触发一次。
+
+  function checkRendeerTime(target, callback) {
+            const startTime = performance.now();
+            let isCalled = false; // 增加标识位
+            const observer = new MutationObserver((mutationsList, observer) => {
+                const changNode = document.querySelector('.' + target);
+                if (changNode && !isCalled) { // 检查标识位
+                    isCalled = true; // 立即锁定
+                    requestAnimationFrame(() => {
+                        const endTime = performance.now();
+                        const renderTime = endTime - startTime;
+                        observer.disconnect(); // 停止观察
+                        callback(renderTime);
+                    })
+                }
+            });
+            observer.observe(document.body, { childList: true, subtree: true, attributes: false });
+        }
+
+
+针对 01-ob监听.html 进行修改：
+
+Edited
+01-ob监听.html
+出现打印 3 次的原因主要与 MutationObserver 的触发机制以及 requestAnimationFrame 的异步特性有关：
+
+为什么会打印 3 次？
+多次微任务触发：MutationObserver 的回调是在微任务中执行的。如果在 requestAnimationFrame（宏任务）开始执行之前，DOM 又发生了其他变化（比如浏览器插件注入、开发环境的脚本更新、或是浏览器自身的某些行为），观察器会再次触发。
+rAF 队列堆积：由于你原本的代码中没有拦截机制，每次观察器触发时，只要 changNode 存在，就会往浏览器渲染队列里塞一个 requestAnimationFrame 回调。
+disconnect() 调用过晚：虽然你在 rAF 回调里写了 observer.disconnect()，但 rAF 的执行时机是在下一轮渲染之前。在第一个 rAF 还没被执行时，可能已经有 3 个观察器回调执行完毕并排好了 3 个 rAF 任务，导致 disconnect() 还没生效就已经注定了 3 次打印。
+修复方法
+我已经在 01-ob监听.html 中引入了一个标志位变量 isCalled：
+
+引入 isCalled 变量：初始为 false。
+逻辑拦截：在回调中判断 if (changNode && !isCalled)。一旦进入逻辑立即将 isCalled 置为 true。
+结果：这样即使观察器再触发多次，也会因为 isCalled 已经变更为 true 而不再重复创建 requestAnimationFrame 任务。
+现在，无论 DOM 发生多少次细微抖动，控制台都只会打印 1 次最终的渲染时间。
+
+
+
+
+对于传入的节点，能够拿到节点说明已经渲染完成，还是部分渲染了呢 -- 子节点也完成了
+
+简单来说：当你拿到节点时，DOM 结构已经是完整的了（子节点也都齐了），但“物理渲染”（也就是你眼睛能看到）还没有真正完成。
+
+详细解释如下：
+
+1. 结构上的完整性（已完成）
+在你的 creaetDom 函数中，逻辑是：
+
+先循环往 checkdom 内部添加 1000 个子节点。
+最后才执行 document.body.appendChild(checkdom)。
+由于 MutationObserver 监听的是 body 的变化，当它触发回调时，checkdom 及其内部的 1000 个子元素都已经作为一颗完整的子树插入到了 DOM 树中。所以在这个时刻，你通过 querySelector 拿到的节点是结构完整的，子节点已经全部存在。
+
+2. 视觉上的渲染（尚未完成）
+虽然 DOM 树里有了这些节点，但浏览器此时处于以下状态：
+
+JS 还在运行：MutationObserver 的回调属于微任务 (Microtask)，它会在当前任务执行完后立即执行。
+未进行布局和绘制：浏览器还没来得及计算这些新 DOM 的坐标（Layout）和把它们画到屏幕上（Paint）。
+3. requestAnimationFrame 的作用
+你在代码中使用了 requestAnimationFrame (rAF)，这非常关键：
+
+rAF 的触发时机：它会在浏览器进行下一次重绘（Paint）之前执行。
+测量时间的含义：
+performance.now() 在 rAF 中拿到的时间，实际上是“JS 准备好 DOM”到“浏览器准备开始渲染”之间的时间。
+如果你想获取更接近物理渲染完成的时间，业界通用的做法是使用嵌套的 rAF（或者把 isCalled 锁加上，防止多次触发）：
+
+
+requestAnimationFrame(() => {
+    // 这个时候已经计算好了布局，准备开始绘制
+    requestAnimationFrame(() => {
+        // 这个时候第一帧绘制已经基本提交给 GPU
+        const endTime = performance.now();
+    });
+});
+
+
+总结
+拿到节点时：子节点已在内存（DOM 树）中准备就绪。
+渲染状态：处于“逻辑完成，视觉未动”的状态。
+子节点：已全部挂载，不是部分渲染。
+
+
+
+这里是等dom数构建完成了，才执行微任务的回调吧
+
+是的，你的理解非常准确。
+
+在 jjs/渲染时间/01-ob监听.html 的上下文中，执行逻辑如下：
+
+同步任务完成：creaetDom 函数中的 document.body.appendChild(checkdom) 是同步代码。当这行代码执行完，DOM 树在内存中已经构建完成，包括所有的子节点（那 10 个 div）。
+触发微任务：MutationObserver 的回调是一个微任务（Microtask）。它会在当前的同步 JavaScript 任务全部执行完毕后、浏览器进行下一次重绘（Paint）之前立即执行。
+节点状态：当你通过 document.querySelector('.' + target) 拿到节点时，它在内存中是完整的（子节点齐全）。
+关键点区分：
+DOM 树构建完成：是的，微任务执行时，DOM 结构已经完整。
+渲染完成（用户可见）：不是。此时浏览器还没有进行布局（Layout）和绘制（Paint）。真正的“渲染”发生在微任务队列清空之后的“Update the rendering”阶段。
+这就是为什么你代码中使用了 requestAnimationFrame。requestAnimationFrame 会在浏览器即将开始渲染下一帧时执行，通常被认为是测量渲染开始时间的最佳时机。
+
+如果你想测量渲染真正结束的时间，业界通常的做法是使用双重 requestAnimationFrame：
+
+
+// ...existing code...
+                if (changNode) {
+                    requestAnimationFrame(() => {
+                        // 此时第一帧渲染准备开始
+                        requestAnimationFrame(() => {
+                            // 此时第一帧渲染已基本提交完成
+                            const endTime = performance.now();
+                            const renderTime = endTime - startTime;
+                            observer.disconnect();
+                            callback(renderTime);
+                        });
+                    })
+                }
+// filepath: d:\js\jjs\渲染时间\01-ob监听.html
+// ...existing code...
+                if (changNode) {
+                    requestAnimationFrame(() => {
+                        // 此时第一帧渲染准备开始
+                        requestAnimationFrame(() => {
+                            // 此时第一帧渲染已基本提交完成
+                            const endTime = performance.now();
+                            const renderTime = endTime - startTime;
+                            observer.disconnect();
+                            callback(renderTime);
+                        });
+                    })
+                }
+
+
+
+
+
+
+
+代码中存在以下几个导致报错的主要原因：
+
+1. 变量未定义 (ReferenceError)
+在定义 template 变量时，你使用了模板字符串（反引号 `），并且其中包含了 ${user.balance}。
+
+原因：JavaScript 会尝试立即解析 ${} 里的变量。此时 user 变量还没有被定义，因此会直接报错 ReferenceError: user is not defined。
+解决方法：将模板字符串中的 $ 转义为 \$，或者使用单引号/双引号。
+2. 函数名不匹配 (ReferenceError)
+你定义的函数名是 changtemplete，但在测试代码中调用的是 compile(template)。
+
+原因：找不到名为 compile 的函数。
+解决方法：将调用处改为 changtemplete(template)。
+3. 正则表达式逻辑错误
+锚点问题：正则开头使用了 ^，这表示只匹配字符串的最开始。如果模板标记在中间，则无法匹配。
+全局匹配：缺少 g 标志，导致 replace 只会处理第一个找到的标签。
+捕获组问题：[^}]+ 和 [^}]+ 的逻辑需要优化。
+4. 没有返回值
+render(data) 执行后没有返回替换后的内容，控制台会打印 undefined。
+
+/ ...existing code...
+    <script>
+        function changtemplete(template) {
+            // 移除 ^ 锚点，增加 g 标志进行全局匹配
+            const reg = /\{\{([\s\S]+?)\}\}|\$\{([\s\S]+?)\}/g;
+
+            return function(data) {
+                // 需要将 replace 的结果返回
+                return template.replace(reg, (match, p1, p2) => {
+                    const key = (p1 || p2).trim();
+                    // 简单的深层对象访问逻辑，例如 "user.name" -> data['user']['name']
+                    return key.split('.').reduce((obj, k) => {
+                        const matchArr = k.match(/([^\[\]]+)/g); // 处理 items[0] 这种情况
+                        return matchArr.reduce((prev, curr) => prev && prev[curr], obj);
+                    }, data) || match;
+                });
+            }
+        }
+
+        // 修复 1: 变量名改为 changtemplete
+        // 修复 2: 使用 \$ 避免模板字符串立即解析
+        const template = `
+  合法1: {{user.name}} 
+  合法2: \${user.balance}
+  非法1: \${{user.items[0]}}  
+  非法2: \${ user.items[2].kk }}
+  非法3: {{user.age } 
+`;
+
+        const render = changtemplete(template);
+        const data = {
+// ...existing code...
+
+
+
+
+
+
+
+
+
+之所以“非法1”被匹配上了，是因为正则表达式的匹配机制和你的分支逻辑：
+
+原因分析
+你的正则 /\{\{([\w\.\[\]]+?)\}\}|\$\{([\w\.\[\]]+?)\}/g 包含两个分支：
+
+左侧分支：\{\{([\w\.\[\]]+?)\}\} —— 匹配 {{...}}。
+右侧分支：\$\{([\w\.\[\]]+?)\} —— 匹配 ${...}。
+对于字符串 \${{user.items[0]}}：
+
+正则引擎从左往右扫描，它在字符 $ 之后发现了 {{。
+此时，它命中了左侧分支 \{\{...)\}\}。
+它成功匹配到了内部的 {{user.items[0]}}。
+开头的 $ 字符被正则引擎视作普通的“前置文本”，不属于匹配到的 match 范围。
+结果：控制台打印了 user.items[0]，因为正则认为它找到了一个合法的 Handlebars (双大括号) 标签，只是这个标签前面凑巧有一个 $ 符号。
+
+如何避免（如果你认为这是非法的）
+如果你希望 ${{...}} 这种混合格式不被匹配，可以利用负向断言来确保 {{ 前面不能有 $ 符号：
+
+// ...existing code...
+        function changtemplete(templete ){
+            // 使用 (?!...) 负向先行断言（如果环境支持）或者更严谨的匹配逻辑
+            // 简单的做法是把 ${} 的匹配放在前面，并优化 {{}} 的逻辑
+            const regex = /\$\{([\w\.\[\]]+?)\}|(?<!\$)\{\{([\w\.\[\]]+?)\}\}/g;
+// ...existing code...// filepath: d:\js\jjs\正则\应用题\2.复杂.html
+// ...existing code...
+        function changtemplete(templete ){
+            // 使用 (?!...) 负向先行断言（如果环境支持）或者更严谨的匹配逻辑
+            // 简单的做法是把 ${} 的匹配放在前面，并优化 {{}} 的逻辑
+            const regex = /\$\{([\w\.\[\]]+?)\}|(?<!\$)\{\{([\w\.\[\]]+?)\}\}/g;
+// ...existing code...
+
+
+
+
+
+
+
+/**
+ * @param {TreeNode} root
+ * @return {number}
+ */
+var diameterOfBinaryTree = function(root) {
+    let maxDiameter = 0;
+
+    function getDepth(node) {
+        if (!node) return 0; // 空节点深度为 0
+        
+        // 递归计算左右子树的深度
+        let leftDepth = getDepth(node.left);
+        let rightDepth = getDepth(node.right);
+        
+        // 在每个节点处，计算经过该节点的路径长度（左深度 + 右深度）
+        // 并更新全局最大直径
+        maxDiameter = Math.max(maxDiameter, leftDepth + rightDepth);
+        
+        // 返回该节点的深度（左右子树中较大的深度 + 1）
+        return Math.max(leftDepth, rightDepth) + 1;
+    }
+
+    getDepth(root);
+    return maxDiameter;
+};

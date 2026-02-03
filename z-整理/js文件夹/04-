@@ -1,0 +1,135 @@
+vue3中nexttick的执行时机是位于视图更新后的下一宏任务开启中的微任务执行吧
+
+你的理解有一点偏差。
+
+nextTick 的执行时机不是在“下一宏任务开启中”，而是在当前宏任务结束后的**微任务队列（Microtask Queue）**中。
+
+准确的描述是：Vue 的 DOM 更新是异步的（基于微任务），nextTick 只是把你的回调函数推入了同一个微任务队列的末尾，排在 DOM 更新任务之后。
+
+详细执行流程
+结合你刚才学习的 Promise 微任务队列知识，Vue 3 的更新流程如下：
+
+修改数据 (this.message = 'new')：
+
+Vue 监听到数据变化。
+Vue 开启一个队列，把负责更新 DOM 的任务（Scheduler Job）推入微任务队列（假设叫 Microtask_VueUpdate）。
+调用 nextTick(callback)：
+
+Vue 将你的 callback 封装成一个 Promise，推入微任务队列（假设叫 Microtask_UserCallback）。
+此时微任务队列的样子：[Microtask_VueUpdate, Microtask_UserCallback]。
+当前宏任务（同步代码）执行完毕。
+
+清空微任务队列（Event Loop 的 Microtask Checkpoint）：
+
+先执行 Microtask_VueUpdate：Vue 重新渲染组件，更新真实的 DOM 节点。
+后执行 Microtask_UserCallback：此时因为 DOM 已经更新完了，所以你的回调里能获取到最新的 DOM。
+浏览器渲染（UI Rendering）：
+
+浏览器把更新后的 DOM 画到屏幕上。
+开启下一个宏任务（如 setTimeout）。
+
+为什么不是“下一宏任务”？
+如果 nextTick 是在下一宏任务执行，那么浏览器会先进行一次 UI 渲染（Paint），这会导致页面可能出现闪烁，或者导致不必要的重绘。
+
+Vue 利用微任务（Promise）的高优先级，确保在浏览器重新渲染之前，把所有的数据变更和 DOM 操作都处理完。
+
+代码类比
+你可以把 Vue 的机制看作类似下面的代码：
+
+// 模拟 Vue 内部机制
+
+function updateDOM() {
+    console.log('1. Vue 内部任务：更新 DOM');
+}
+
+// 1. 修改数据，Vue 内部自动把更新推入微任务
+Promise.resolve().then(updateDOM);
+
+// 2. 用户调用 nextTick
+function nextTick(callback) {
+    return Promise.resolve().then(callback);
+}
+
+nextTick(() => {
+    console.log('2. 用户 nextTick 回调：获取 DOM');
+});
+
+console.log('0. 同步代码结束');
+
+// 输出顺序：
+// 0. 同步代码结束
+// 1. Vue 内部任务：更新 DOM
+// 2. 用户 nextTick 回调：获取 DOM
+
+总结： nextTick 本质就是利用 Promise.then，它和 Vue 的 DOM 更新机制处于同一个事件循环（Tick）的微任务阶段，只是排队排在更新任务
+
+后面而已。
+
+// ...existing code...
+        var mergeTwoLists = function (list1, list2) {
+            // 1. 处理边界情况
+            if (!list1) return list2;
+            if (!list2) return list1;
+
+            // 2. 创建一个虚拟头节点 dummy，以及一个移动指针 cur
+            let dummy = new node(0); 
+            let cur = dummy;
+
+            // 3. 记录原始头节点（虽然有了 dummy，返回 dummy.next 即可）
+            let l1 = list1;
+            let l2 = list2;
+
+            // 4. 循环比较并合并
+            while (l1 && l2) {
+                if (l1.val <= l2.val) {
+                    cur.next = l1; // 将较小的节点接在 cur 后面
+                    l1 = l1.next;  // 移动 l1 指针
+                } else {
+                    cur.next = l2; // 将较小的节点接在 cur 后面
+                    l2 = l2.next;  // 移动 l2 指针
+                }
+                cur = cur.next;    // 移动合并链表的末尾指针
+            }
+
+            // 5. 拼接剩余的链表部分
+            cur.next = l1 ? l1 : l2;
+
+            // 6. 返回合并后的真正头节点
+            return dummy.next;
+        };
+// ...existing code...
+
+
+
+
+
+
+
+
+Node.js 提供了许多内置的核心模块，无需安装即可直接使用。以下是除 fs 和 path 外最常用的几个：
+
+http / https: 用于创建 HTTP 客户端或服务器。
+os: 获取当前操作系统的信息（如 CPU、内存、主机名）。
+events: 提供 EventEmitter 类，用于处理自定义事件。
+crypto: 提供加密功能，包括哈希、HMAC、加密、解密、签名和验证。
+stream: 用于处理流式数据。
+url: 用于解析和格式化 URL 字符串。
+util: 包含各种实用工具函数（如 util.promisify）。
+zlib: 提供压缩和解压缩功能（如 gzip）。
+child_process: 用于派生子进程并执行命令。
+process: 提供有关当前 Node.js 进程的信息和控制（全局对象，无需 require 也可使用）。
+示例用法：
+
+
+
+
+
+
+
+
+
+可以这么判断（结论：这是主包）：
+
+依据一：文件路径是 apps/main/src/manifest.json，目录名为 main，通常代表主包；子包一般在 apps/xxx（非 main）下。
+依据二：manifest.json 有 router.entry（入口页 pages/spa），主包通常包含入口页，子包一般没有独立入口，或由根 manifest 声明为 subpackage。
+进一步确认：检查工程根目录是否有其他 apps 子目录或根 manifest 中的 subPackages 字段。
