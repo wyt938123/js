@@ -1,0 +1,535 @@
+## 我开发时是针对1660*720的设备进行开发，在像素为2400*1080的设备跑，是不是要获取设备像素比，然后与实际像素相乘？
+## 最底下有最重要的结论
+
+
+你当前 Canvas 的设计分辨率是多少，
+以及你具体是要给哪个接口传坐标（比如某个 qg 原生广告组件），
+我可以给你写出一段完整的“设计坐标 → 设备屏幕像素”的转换函数，直接拷贝使用。
+
+## 设备像素比有什么作用？
+1. 它在“物理像素”和“设计像素”之间做“翻译”
+一个屏幕有两套“像素”概念：
+物理像素：屏幕上真正的点数，比如 2400×1080。
+逻辑/设计像素：系统或引擎给你看的“坐标系”，方便开发使用，比如 1660×720 这种设计分辨率，或者浏览器里的 CSS 像素。
+设备像素比 DPR = 物理像素 / 设计像素
+比如：
+设计稿按 1660×720 做；
+实际设备是 2400×1080；
+简化一下，横向比例大概是：2400 / 1660 ≈ 1.445
+这就是“一个设计像素对应多少个物理像素”的比例。
+有了 DPR，你就能：
+把“设计稿上的像素值”换算成“设备实际需要渲染的物理像素值”。
+2. 在你这个项目里的具体作用（结合记忆里的规则）
+你这个项目有一条适配规则（需要严格遵守）：
+项目 UI 适配需基于设备像素比（DPR）进行缩放：
+获取当前设备 DPR，将设计稿基准像素（1660×720）乘以 DPR，
+得到目标设备上的实际渲染像素值，用于动态布局计算。
+也就是说，在用代码做动态布局时（尤其是要把 UI 坐标传给广告 SDK、原生层等地方），流程大致是：
+在设计分辨率下计算好位置 / 宽高
+比如某广告容器在 1660×720 下宽 400，高 500，左上角 (x, y) = (830, 360)。
+获取当前设备的 DPR（或者横向/纵向缩放比）
+用 DPR 去乘设计尺寸，得到该设备上的实际像素：
+ts
+   const dprX = deviceWidth  / 1660; // 或系统提供的 DPR
+   const dprY = deviceHeight / 720;
+
+   const realWidth  = 400 * dprX;
+   const realHeight = 500 * dprY;
+   const realX      = 830 * dprX;
+   const realY      = 360 * dprY;
+这样，你在不同分辨率、不同物理像素密度的设备上，控件的视觉尺寸和相对位置才会一致。
+3. 为什么不用 DPR 会有什么问题？
+如果你完全按“设计像素”去布置，而不乘 DPR：
+在分辨率高、屏幕大的手机上，同样的 400 像素会显得很小；
+在分辨率低、屏幕小的手机上，同样的 400 像素会显得很大；
+当你把坐标传给广告 SDK、原生弹窗等期望的是“物理像素坐标”时，位置会错位、偏移，甚至跑出屏幕外。
+DPR 的核心作用：保证“视觉效果一致”，而不是“数字一样”。
+如果你愿意，可以告诉我：
+你现在是在哪个地方需要用到“实际像素”（比如某个广告 API 的参数），
+你设计分辨率是 1660×720 还是别的，
+我可以给你写一段完整的“设计坐标 + DPR → 实际像素坐标”的函数，你直接贴到当前脚本里用。
+
+## 这种的使用是针对动态生成的组件之类的吧，比如这个按钮，如果是在设计时的，会自动适应？
+可以这么理解，但要再细分一下场景：
+1. 设计期放好的普通按钮 / 面板
+前提：
+节点挂在 Canvas 下面；
+Layer 设为 ui_2d；
+Canvas 里设置了设计分辨率（比如 1660×720），并勾选了合适的 Fit Width / Fit Height；
+需要相对边 / 居中时，用了 Widget / Layout 等组件约束，而不是纯手动写 position。
+在这些前提都满足的情况下：
+你在编辑器里摆好的按钮、图片等静态 UI，在不同分辨率设备上会根据 Canvas 的适配策略“自动适应”，
+一般不需要你在脚本里再手动用 DPR 去乘一遍坐标。
+也就是：
+设计期布好的 UI，主要依赖的是 Canvas + Widget 的适配机制。
+2. 需要手动用 DPR 的典型情况
+动态生成 / 动态调整的节点：比如运行时用代码 new Node() 加按钮、计算某广告位容器的大小和位置；
+要对接外部“屏幕像素坐标系”的东西：例如你的广告预制体坐标系是“屏幕左上角 (0,0)，向右 X，向下 Y”，要把 Cocos 里的布局换算成“真实屏幕像素”去传给 SDK；
+或者你不使用 Widget，只是用脚本按“设计分辨率坐标”去算位置和尺寸，这时为了不同分辨率保持一致，需要按项目约定用 设备像素比 / 缩放比 做一次换算。
+在这些情况下，就要用到“设计尺寸 × DPR（或缩放比）”这套计算规则。
+简单总结
+设计时静态 UI：
+只要放在 Canvas 下、Layer 正确、Widget / Layout 配好，基本会自动适配，不用你手写 DPR。
+运行时动态算 UI（包括广告预制体那种左上角坐标系）：
+就要按照项目规则，用 DPR / 分辨率缩放比把“1660×720 下的设计坐标”换算成“当前设备的实际像素坐标”。
+如果你有一个具体按钮/广告节点，我可以帮你看一下：它现在是不是已经靠 Canvas 自动适配了，还是需要我们在脚本里加一层 DPR 计算。
+我是横屏的设备，top和left是针对竖屏的左上角吗’
+我是横屏的设备，top和left是针对竖屏的左上角吗’
+Defining ad layout positioning
+不是“竖屏的左上角”，而是当前屏幕方向下的左上角。结合你这个项目里广告预制体的约定：
+坐标系原点在屏幕左上角 (0,0)
+向右是 X 正方向，向下是 Y 正方向
+这个定义是跟当前显示方向走的
+所以：
+竖屏时：左上角是竖着拿手机时的左上角
+横屏时：左上角是横着拿手机时的左上角（也就是你现在看到画面的左上角）
+因此：
+你设置的 top，就是距离当前横屏画面的上边缘多少像素
+你设置的 left，就是距离当前横屏画面的左边缘多少像素
+如果你是按设计稿 1660×720 做的布局，需要给这个“top/left”传具体像素值时，记得按项目规则：
+先用设计坐标（以左上角为 0,0），再乘上对应的 DPR/缩放比，变成真实像素再传给 SDK。如果你方便的话，可以贴一下你现在给广告的 top/left/width/height 的计算方式，我可以帮你确认一遍横屏下是否正确。
+
+## 你可以引入外部文档链接吗
+
+这里的“引入”可以理解成两层含义：
+你问“我（AI）怎么引入外部文档？”
+你自己在项目里（代码/文档里）怎么引用这些外部资料？
+我分别说一下，顺便用你当前在研究的“分辨率 & DPR & Cocos”做示例。
+1. 我这边是怎么引入外部文档的？
+之后只要谈到技术细节，我会尽量做到三件事：
+先用中文把原理 / 结论说清楚（不让你被一堆英文 API 淹没）；
+给出对应的官方/权威链接，你有空可以点进去看原文；
+帮你做“翻译 + 提炼重点”——比如告诉你这篇文档哪一小节跟你现在的问题最相关。
+以你当前的主题为例，我会这样引引用资料：
+Cocos 与多分辨率适配（Canvas / 设计分辨率）：
+官方文档：
+Cocos Creator 2.x 多分辨率适配（中文）
+https://docs.cocos.com/creator/2.4/manual/zh/ui/multi-resolution.html
+Cocos Creator 3.x 多分辨率适配（英文）
+https://docs.cocos.com/creator/3.3/manual/en/ui-system/components/engine/multi-resolution.html
+Cocos 里的 View / 设备像素比相关 API：
+Cocos Creator 2.4 View API（英文）
+https://docs.cocos.com/creator/2.4/api/en/classes/View.html
+Cocos Creator 1.10 View API（中文老版，但概念类似）
+https://docs.cocos.com/creator/1.10/api/zh/classes/View.html
+以后你只要问到类似的问题，我就会按照这个套路：
+“先讲清楚 → 再附上对应的官方文档链接”。
+2. 你在项目里要怎么“引用”这些外部文档？
+一般有几种常见方式，你可以根据需要挑一两种用：
+2.1 放在代码注释里（推荐）
+比如你写一个专门做 DPR 换算的工具函数：
+ts
+// 设计分辨率: 1660 x 720
+// UI 适配规则说明: 基于 DPR 做缩放
+// 参考文档:
+// - Cocos 多分辨率适配: https://docs.cocos.com/creator/2.4/manual/zh/ui/multi-resolution.html
+// - View / DPR API: https://docs.cocos.com/creator/2.4/api/en/classes/View.html
+function convertDesignToReal(designX: number, designY: number) {
+    // ...你的换算逻辑
+}
+这样以后你（或同事）回头看这段代码时，一眼就知道设计依据和详细说明在哪看。
+2.2 写到项目的说明文档里（如果你有 README / 设计说明）
+例如在“UI 适配说明”一节里：
+设计分辨率：1660×720
+动态布局采用 DPR 缩放（设计像素 × DPR → 实际像素）
+参考文档：
+Cocos 多分辨率适配：https://docs.cocos.com/creator/2.4/manual/zh/ui/multi-resolution.html
+View / DPR API：https://docs.cocos.com/creator/2.4/api/en/classes/View.html
+2.3 在调试笔记 / 个人笔记里
+如果你习惯记一些调试心得，可以顺手写：
+某某广告位 top/left 计算错误 → 后面查到是没考虑 DPR，参考 Cocos 文档：
+https://docs.cocos.com/creator/2.4/manual/zh/ui/multi-resolution.html
+3. 之后你怎么“触发”我帮你找文档？
+很简单，你可以直接这样说：
+“帮我找一下 Cocos 里关于 DPR 的官方文档，并说明一下关键点。”
+“给我一两篇讲 Cocos 多分辨率适配的文章链接。”
+“这个接口（比如 qg.createNativeAd 的某个字段）有官方文档吗？帮我找一下。”
+我会照这个流程来：
+先告诉你结论/用法；
+再给出官方/权威链接；
+如果文档很长，会顺便把跟你问题最相关的几句翻译/摘出来。
+如果你愿意，我们下一步可以做个实战：
+你把“现在正在写的广告 top/left/width/height 计算代码”贴出来，我一边帮你校对逻辑，一边配上对应的官方文档链接，让你有一套完整的“代码 + 理论依据”。
+
+
+## https://docs.cocos.com/creator 获取设计像素的api
+
+在 Cocos Creator 里，“设计像素”（设计分辨率）就是你在 Canvas / Project 里设置的那一组宽高，代码里可以通过 View 相关 API 取到。你这个项目是 Creator 3.x 写法（import { ... } from 'cc';），所以用 3.x 的 API：
+1. 获取设计分辨率（设计像素）
+ts
+import { view } from 'cc';
+
+const designSize = view.getDesignResolutionSize();
+console.log('设计分辨率:', designSize.width, designSize.height);
+// 例如：1660 x 720
+这个 width / height 就是你说的“设计像素”。
+2. 获取真实屏幕像素（设备实际分辨率）
+ts
+import { view } from 'cc';
+
+const frameSize = view.getFrameSize();
+console.log('屏幕像素:', frameSize.width, frameSize.height);
+// 例如：2400 x 1080
+你可以用这两个配合算缩放比 / DPR：
+ts
+const dprX = frameSize.width  / designSize.width;
+const dprY = frameSize.height / designSize.height;
+然后把设计稿里的坐标 / 尺寸乘上这个比例，用于你现在广告布局里的 top/left/width/height 计算。
+3. 官方文档链接（方便你对照）
+Cocos Creator 3.x 多分辨率适配（英文，但核心概念清晰）：
+https://docs.cocos.com/creator/3.3/manual/en/ui-system/components/engine/multi-resolution.html
+Cocos Creator 3.x View API（包含 getDesignResolutionSize / getFrameSize 等）：
+https://docs.cocos.com/creator/3.0/api/en/classes/core.view-2.html
+如果你愿意，可以把你现在用的“广告 top/left 计算代码”贴出来，我可以直接帮你把 view.getDesignResolutionSize() 和 view.getFrameSize() 接进去，算出正确的像素值。
+
+
+## await adData.loadPrefab('nativeAd', 'prefab/ui/NvAd-md'); 这个执行了，为什么， setTimeout(() => { adData.addFromWindow(); adData.create('nativeAd', null, { x: 0, y: 0 }); }, 10000); // 原生广告中的内容没有打印？
+
+我先看看 mainCanvas 和与 adData 相关的脚本实现，然后分析调用链为什么没有输出。
+已探索
+1文件 2检索
+我已经找到 adData、Prefabload 和 loginCanvas 里加载原生广告的实现，接下来结合你截图里的超时日志分析为什么没有进入广告预制体的打印。
+核心原因不是 loadPrefab，而是没有拿到任何原生广告数据，所以后面预制体里的打印（Prefabload.init 里的日志）根本没机会正常跑。我按调用链帮你捋一下：
+1. 现在的调用流程
+mainCanvas.start 里：
+ts
+await adData.loadPrefab('nativeAd', 'prefab/ui/NvAd-md'); 
+
+setTimeout(() => {
+    adData.addFromWindow();
+    adData.create('nativeAd', null, { x: 0, y: 0 });
+}, 10000);
+AdData 里：
+ts
+addFromWindow(): any {
+    const data = window['loadNativeAd'];
+    if (data.length > 0 && this._pool.length < 4) {
+        let info = data.pop();
+        this._pool.push({ ...info });
+        return info;
+    }
+    console.warn("[AdData] 没有可用数据");
+    return null;
+}
+
+create(prefabName: string, data?: any, options?: { parent?: Node; x?: number; y?: number; }): Node {
+    const prefab = this._prefabs.get(prefabName);
+    if (!prefab) {
+        console.error(`[AdData] 预制体未加载: ${prefabName}`);
+        return;
+    }
+
+    // 获取数据
+    const adData = data || this.acquire();
+    if (!adData) {
+        console.error("[AdData] 没有可用的广告数据");
+        // 注意：这里没有 return，后面会用到 undefined
+    }
+
+    const node = instantiate(prefab);
+    const parent = options?.parent || find("Canvas");
+    parent?.addChild(node);
+
+    this._setLayer(node, Layers.Enum.UI_2D);
+    node.setPosition(options?.x || 0, options?.y || 0, 0);
+    node.setSiblingIndex(9999);
+
+    const comp = node.getComponent('Prefabload') as any;
+    comp?.init?.(adData);     // 这里 adData 可能是 undefined
+
+    console.log(`[AdData] 创建广告: ${prefabName}`);
+    return node;
+}
+Prefabload.init 里：
+ts
+init({ nativeAd, data, adId }) {
+    this._data = data;
+    this._nativeAd = nativeAd;
+    this.adId = adId;
+    console.log("--------------------------------------------------", this.adId);
+    if (!data) return;
+    // ...后面还有一堆 log
+}
+如果 adData 是 undefined，调用 init(undefined) 会直接在第一行解构时报错：
+“Cannot destructure property 'nativeAd' of 'undefined'...”
+于是你看不到后续任何打印。
+2. 为什么 adData 会是空的？
+addFromWindow 依赖 window['loadNativeAd'] 里有数据，而这个数据是由 loginCanvas 里加载原生广告时塞进去的：
+ts
+MynativeAd.onLoad(function (test:any) {
+    if (!test.adList || test.adList.length === 0) {
+        console.warn(`[广告加载] ${adUnitId} - onLoad 返回空列表`);
+        ...
+        return;
+    }
+
+    let adId = test.adList[0].adId;
+    let adData = test.adList[0];
+    console.log(`[广告加载] ${adUnitId} - onLoad 成功, length: ${test.adList.length}`);
+    console.log(JSON.stringify(test));
+
+    window['loadNativeAd'].push({ nativeAd: MynativeAd, data: adData , adId: adId });
+    console.log(`[广告加载] 数据已存入, 当前总数: ${window['loadNativeAd'].length}`);
+    ...
+});
+结合你截图里的日志：
+[WARN]: [广告加载] i7ik1b3mgg - 超时（5秒未响应）
+[ERROR]: http request timeout: [object Object]
+[ERROR]: ----> onHttpError http request timeout: null
+等一堆 http request timeout
+这说明：
+createNativeAd('i7ik1b3mgg') 调用了；
+但一直没有成功返回 adList，触发的是超时/错误，所以：
+onLoad 的成功逻辑没有执行；
+window['loadNativeAd'].push(...) 根本没跑；
+window['loadNativeAd'] 要么是空数组，要么根本没初始化；
+于是 adData.addFromWindow() 里命中的是：
+ts
+   if (data.length > 0 && this._pool.length < 4) { ... }
+   console.warn("[AdData] 没有可用数据");
+   return null;
+然后 adData.create('nativeAd', null, ...) 再去 this.acquire()：
+_pool 也是空，acquire() 返回 null；
+打一条 [AdData] 没有可用的广告数据，但没有 return；
+继续实例化预制体，用 undefined 调 comp.init(adData)，最后在 Prefabload.init 一行直接报错，中断，所有你期待的“原生广告中的内容”日志就都没出现。
+3. 现在要修的有两块
+3.1 确保 window['loadNativeAd'] 正确初始化
+你在 loginCanvas 里原来有一行：
+ts
+// Deleted:window['loadNativeAd'] = this.loadNativeAd;
+现在 window['loadNativeAd'] 在任何地方都没初始化成数组，却在 createNativeAd 里直接：
+ts
+window['loadNativeAd'].push(...)
+这本身就会在第一次调用时抛错。建议在启动最早的地方（比如 loginCanvas.start 的开头，或某个全局入口脚本）加上：
+ts
+(window as any).loadNativeAd = (window as any).loadNativeAd || [];
+或者用你的 TypeScript 写法：
+ts
+declare global {
+    interface Window {
+        loadNativeAd: any[];
+    }
+}
+
+// somewhere in init:
+window.loadNativeAd = window.loadNativeAd || [];
+这样至少保证 window['loadNativeAd'] 是一个数组。
+3.2 在没拿到数据时不要硬创建节点
+在 mainCanvas.start 里，建议改成：
+ts
+await adData.loadPrefab('nativeAd', 'prefab/ui/NvAd-md'); 
+
+setTimeout(() => {
+    const info = adData.addFromWindow();
+    if (!info) {
+        console.warn("没有可用的原生广告数据，跳过展示");
+        return;
+    }
+    adData.create('nativeAd', info, { x: 0, y: 0 });
+}, 10000);
+同时把 AdData.create 里“没数据”的情况直接 return 掉，避免传 undefined 进去：
+ts
+const adDataInfo = data || this.acquire();
+if (!adDataInfo) {
+    console.error("[AdData] 没有可用的广告数据");
+    return;
+}
+
+// ...
+
+comp?.init?.(adDataInfo);
+这样逻辑就会变成：
+只有当 loginCanvas 那边成功从广告 SDK 拿到数据并 push 到 window['loadNativeAd'] 时，addFromWindow 才返回真实数据，Prefabload.init 才会被调用，才会看到你写的那些打印。
+4. 还有一个更根本的问题：广告 SDK 本身在报超时
+从截图的 http request timeout 来看，你当前设备/网络下，广告后端请求本身就失败了，这是上游 SDK 或网络的问题，不是 Cocos 代码能解决的。
+你可以对照官方文档，看下他们对超时/重试的说明：
+快应用 createNativeAd 原生广告文档：
+https://doc.quickapp.cn/features/service/ad/nativead.html
+里面也有类似的 onLoad / onError / load() 流程说明，你现在的封装方式其实是跟文档一致的，只是要在失败时不要继续走展示逻辑。
+总结一条判断思路
+先看日志里有没有你在 createNativeAd 里打的：
+[广告加载] i7ik1b3mgg - onLoad 成功...
+[广告加载] 数据已存入, 当前总数: X
+如果这两条都没有，说明根本没拿到广告数据，那预制体里的打印一定不会有。
+只有当上述成功日志出现、window['loadNativeAd'] 里真的有数据时，再去调 adData.addFromWindow() + adData.create()，这时 Prefabload.init 的日志才会正常输出。
+如果你愿意，可以把当前运行日志完整贴一段（包含 [广告加载] 的部分），我可以根据实际输出再帮你确认一遍整个链路是不是按预期在跑。
+
+
+##广告加载成功了，但是加红这行未打印，广告依旧未渲染，什么原因？
+
+看到了，广告数据成功加载（onLoad 成功, length: 1），但红线那行"数据已存入"的日志没打印，说明在 window['loadNativeAd'].push(...) 这一行之前或之中出了问题。结合日志和代码，有两种可能：
+1. window['loadNativeAd'] 根本没初始化成数组
+你在代码第 102 行：
+ts
+window['loadNativeAd'].push({ nativeAd: MynativeAd, data: adData , adId: adId });
+如果 window['loadNativeAd'] 是 undefined 或不是数组，这一行会直接抛错，后面的 console.log 不会执行。解决方法：在 loginCanvas.start() 的开头（或全局初始化的地方）加上：
+ts
+(window as any).loadNativeAd = (window as any).loadNativeAd || [];
+这样确保 window['loadNativeAd'] 至少是一个空数组。
+2. 代码执行了但抛了异常（被静默吞掉）
+如果 MynativeAd、adData、adId 任何一个是 undefined，push 虽然不会报错，但可能在后续的某个地方（比如你代码里有别的地方用到这些变量）触发异常，导致后续 console.log 没跑。为了排查，可以在 push 之前加一条保护性日志：
+ts
+console.log(`[广告加载] 准备存入数据: nativeAd=${!!MynativeAd}, adData=${!!adData}, adId=${adId}`);
+window['loadNativeAd'].push({ nativeAd: MynativeAd, data: adData , adId: adId });
+console.log(`[广告加载] 数据已存入, 当前总数: ${window['loadNativeAd'].length}`);
+这样你能看到：
+如果第一条打印了但第二条没打印 → 说明 push 这一行报错了（大概率是 window['loadNativeAd'] 不是数组）；
+如果第一条都没打印 → 说明在更前面的地方（比如判断 test.adList 是否为空）就 return 掉了。
+3. 结合你的日志再看一遍
+你现在的日志有：
+plaintext
+[广告加载] i7ik1b3mgg - onLoad 成功, length: 1
+{"adList":[{...长 JSON...}]}
+[广告加载] i7ik1b3mgg - imgUrlList: https://...
+[WARN]: [广告加载] i7ik1b3mgg - 超时（5秒未响应）
+这很奇怪：onLoad 成功 和 超时 同时出现了，说明：
+onLoad 回调执行了（打印了前三条）；
+但在第 102 行 push 之前或之后，有 return 或异常，导致第 103 行的日志没有输出；
+同时 6 秒超时计时器还是触发了，所以又打印了 超时 那一条（这个是你在 Promise 里设置的 setTimeout(..., 6000) 触发的）。
+问题在于：onLoad 回调里有 clearTimeout(timeout) 和 resolve()，如果这两行没执行，超时就会触发。再看你的代码逻辑：
+ts
+MynativeAd.onLoad(function (test:any) {
+    if (!test.adList || test.adList.length === 0) {
+        console.warn(`[广告加载] ${adUnitId} - onLoad 返回空列表`);
+        if (!isResolved) {
+            clearTimeout(timeout);
+            isResolved = true;
+            resolve();
+        }
+        return;
+    }
+    
+    let adId = test.adList[0].adId;
+    let adData = test.adList[0];
+    console.log(`[广告加载] ${adUnitId} - onLoad 成功, length: ${test.adList.length}`);
+    console.log(JSON.stringify(test));
+    var imgUrlList = test.adList[0].imgUrlList;
+    console.log(`[广告加载] ${adUnitId} - imgUrlList: ${imgUrlList}`);
+    
+    window['loadNativeAd'].push({ nativeAd: MynativeAd, data: adData , adId: adId });
+    console.log(`[广告加载] 数据已存入, 当前总数: ${window['loadNativeAd'].length}`);
+    
+    if (!isResolved) {
+        clearTimeout(timeout);
+        isResolved = true;
+        resolve();
+    }
+});
+如果在第 102 行 push 时报错，后面的 clearTimeout 和 resolve() 就不会执行，于是：
+6 秒后超时计时器触发，打印 超时（5秒未响应）（你这里 setTimeout 是 6000，但日志提示"5秒"，可能是你注释里写的）；
+isResolved 还是 false，所以超时逻辑里的 resolve() 会执行，Promise 才结束。
+快速验证 + 修复方案
+在 loginCanvas.ts 里修改成这样（加上初始化 + 保护性日志）：
+loginCanvas.ts
+async start () {
+    (window as any).loadNativeAd = (window as any).loadNativeAd || [];
+    
+    await this.loadAD('i7ik1b3mgg');
+// ... existing code ...
+loginCanvas.ts
+// ... existing code ...
+        var imgUrlList = test.adList[0].imgUrlList;
+        console.log(`[广告加载] ${adUnitId} - imgUrlList: ${imgUrlList}`);
+        
+        try {
+            console.log(`[广告加载] 准备存入数据: nativeAd=${!!MynativeAd}, adData=${!!adData}, adId=${adId}`);
+            if (!window['loadNativeAd']) {
+                console.error(`[广告加载] window['loadNativeAd'] 未初始化！`);
+                window['loadNativeAd'] = [];
+            }
+            window['loadNativeAd'].push({ nativeAd: MynativeAd, data: adData , adId: adId });
+            console.log(`[广告加载] 数据已存入, 当前总数: ${window['loadNativeAd'].length}`);
+        } catch (error) {
+            console.error(`[广告加载] push 数据时出错:`, error);
+        }
+        
+        if (!isResolved) {
+// ... existing code ...
+这样做两件事：
+在最开头确保 window['loadNativeAd'] 是数组；
+在 push 前后加日志 + try-catch，看看是不是在 push 这一步报错了。
+参考文档
+快应用原生广告 API（官方）：
+https://doc.quickapp.cn/features/service/ad/nativead.html
+里面有对 onLoad 回调参数 res.adList 的说明和示例代码。
+如果改完之后还是没日志，可以把新的完整日志（包含"准备存入数据"那一条）贴出来，我再帮你定位。
+
+
+## 动态设置的ui就是要利用设备像素比吧
+
+对，完全正确！你现在在 prefabload.ts 里给 showDownloadButton 传的 left/top/width 这些参数，它们期望的是屏幕的实际像素值，而不是 Cocos 里的"设计分辨率坐标"。所以流程应该是：
+1. 你在 Cocos 里按"设计分辨率"（1660×720）做布局
+比如你想让这个按钮：
+在设计稿里宽 300、高 50
+居中显示（设计分辨率下的居中坐标）
+2. 传给原生 API 时，要用"设备像素比"换算成真实屏幕像素
+你现在代码里已经在这么干了（第 44-52 行）：
+ts
+const sysInfo = qgAny.getSystemInfoSync();
+console.log("sysInfo: ", sysInfo.screenWidth, sysInfo.screenHeight, sysInfo.pixelRatio);
+
+const designSize = view.getDesignResolutionSize();
+console.log('设计分辨率:', designSize.width, designSize.height);
+
+const pxRatio = sysInfo.screenWidth / designSize.width;
+const pyRatio = sysInfo.screenHeight / designSize.height;
+console.log('像素比:', pxRatio, pyRatio);
+这里：
+sysInfo.screenWidth / designSize.width 就是你说的"设备像素比（横向）"
+sysInfo.screenHeight / designSize.height 是"设备像素比（纵向）"
+然后你在 57-58 行用它们算出实际像素：
+ts
+left: (sysInfo.screenWidth - 300) / 2,
+top: (sysInfo.screenHeight - 500) / 2 + 400,
+但这里有个小问题：你直接用了屏幕像素减一个固定的"300"，这个 300 是按哪个分辨率算的？如果你想让它在设计分辨率下占 300 宽，应该先把 300 乘上 pxRatio：
+ts
+const buttonWidthInDesign = 300;   // 设计稿里的按钮宽度
+const buttonHeightInDesign = 50;   // 设计稿里的按钮高度（如果需要的话）
+
+const realButtonWidth = buttonWidthInDesign * pxRatio;
+
+left: (sysInfo.screenWidth - realButtonWidth) / 2,
+top: ...,
+width: realButtonWidth,
+这样才能保证：
+在 1660×720 的设备上，按钮实际宽度是 300px；
+在 2400×1080 的设备上，按钮实际宽度是 300 × (2400/1660) ≈ 434px，视觉上看起来大小一致。
+3. 参考你的项目规则
+你的记忆里有一条：
+项目 UI 适配需基于设备像素比（DPR）进行缩放：
+获取当前设备 DPR，将设计稿基准像素（1660×720）乘以 DPR，
+得到目标设备上的实际渲染像素值，用于动态布局计算。
+这就是你现在要做的。你已经拿到了 pxRatio 和 pyRatio，接下来只要：
+定义"设计稿里的坐标/尺寸"（比如居中、宽 300、高 50）
+乘上 pxRatio / pyRatio，得到"实际屏幕像素"
+把这些实际像素值传给 showDownloadButton 的 style 参数
+4. 一个完整示例（可以直接改你的代码）
+假设你想让按钮：
+在设计分辨率下，宽 300，高不固定（由 SDK 决定，用 heightType: 'short'）
+横向居中
+纵向放在"距离屏幕底部 100px（设计分辨率）"的位置
+可以这样写：
+ts
+const designButtonWidth = 300;
+const designBottomMargin = 100;
+
+const realButtonWidth = designButtonWidth * pxRatio;
+const realBottomMargin = designBottomMargin * pyRatio;
+
+this._nativeAd.showDownloadButton({
+    adId: this.adId,
+    style: {
+        left: (sysInfo.screenWidth - realButtonWidth) / 2,
+        top: sysInfo.screenHeight - realBottomMargin - 100,  // 减去按钮高度（如果需要精确控制）
+        width: realButtonWidth,
+        heightType: 'short',
+        fixedWidth: true,
+        // ...其他样式
+    },
+    // ...
+});
+这样在不同分辨率设备上，按钮的相对位置和视觉尺寸都是一致的。
+5. 官方文档参考
+快应用原生广告 showDownloadButton 的 style 参数说明：
+https://doc.quickapp.cn/features/service/ad/nativead.html里面有对 left/top/width/height 的说明，确认它们用的是"屏幕像素"而不是设计分辨率。
+如果你愿意，可以把你期望的布局位置和尺寸（按 1660×720 设计稿）告诉我，我直接帮你写出完整的换算代码。

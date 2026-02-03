@@ -1,0 +1,731 @@
+ ## cocos中，为什么这样阻塞了线程？让页面卡死，在vue3中呢如果在组件生命周期内这样会不会也卡死线程？该如何解决这样的问题？
+
+ 我先把 loginCanvas.ts 整体看一眼，弄清 createNativeAd / loadNativeAd 实现细节，再解释为什么会“卡死”，以及在 Vue3 中分别该怎么避免。
+已探索
+1文件
+先把结论说在前面：
+你的这段 await this.createNativeAd('i7ik1b3mgg') 不会真正阻塞 JS 线程，但会把 start 里后面的初始化逻辑全部“挂起”，等广告加载/超时后才继续执行，所以整个游戏初始化流程被“卡在广告加载”上了，看上去就像页面卡死。
+在 Vue3 的组件生命周期里，如果写法类似，也不会阻塞浏览器线程本身，但会把首屏渲染 / 后续逻辑推迟，看起来像“挂起很久不动”。
+解决办法：不要在生命周期里“硬等”广告 / 网络请求，而是把它们当成后台任务，先让 UI 和核心逻辑跑起来，再异步处理广告结果。
+下面分点详细说：
+1. 这段 Cocos 代码里发生了什么
+关键部分：
+ts
+async start () {
+    window['loadNativeAd'] = this.loadNativeAd;
+    
+    // await this.createNativeAd('a5sz2rxpaj');
+    // await this.loadAD('i7ik1b3mgg');
+    await this.createNativeAd('i7ik1b3mgg');  // ← 这里
+    // profiler.hideStats();
+
+    this.loadingUI.show(0);
+
+    // 后面一大堆初始化...
+    playerData.instance.syncServerTime(Date.now());
+    localConfig.instance.loadConfig(()=>{ ... });
+    this.startLogin();
+    this.loadGameSubPackage(...);
+}
+createNativeAd 的实现：
+ts
+createNativeAd(adUnitId:string): Promise<void> {
+    return new Promise((resolve, reject) => {
+        console.log(`[广告加载] 开始加载广告位: ${adUnitId}`);
+
+        let isResolved = false;
+        const timeout = setTimeout(() => {
+            if (!isResolved) {
+                console.warn(`[广告加载] ${adUnitId} - 超时（5秒未响应）`);
+                isResolved = true;
+                resolve();
+            }
+        }, 8000);
+
+        let MynativeAd = qg.createNativeAd({ ... });
+
+        MynativeAd.offLoad();
+        MynativeAd.onLoad(function (test:any) {
+            // ... push 数据到 window['loadNativeAd']
+            if (!isResolved) {
+                clearTimeout(timeout);
+                isResolved = true;
+                resolve();
+            }
+        });
+
+        MynativeAd.offError();
+        MynativeAd.onError(function (test) {
+            if (!isResolved) {
+                clearTimeout(timeout);
+                isResolved = true;
+                resolve();
+            }
+        });
+
+        MynativeAd.load();
+    });
+}
+为什么「感觉」阻塞了线程？
+async/await 的本质：
+await 会暂停当前 async 函数的后续执行，等 Promise resolve 之后再继续，但不会阻塞整个 JS 线程 / 事件循环。渲染、其它事件回调仍然可以照常执行。
+参考：
+MDN - async function: https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Statements/async_function
+MDN - JS 事件循环: https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/EventLoop
+在这个 start 里，await createNativeAd 放在最前面，后面的所有初始化逻辑都要等广告加载/超时后才执行：
+this.loadingUI.show(0)（加载界面都没显示）
+localConfig.instance.loadConfig（配置加载）
+this.startLogin()（登录）
+this.loadGameSubPackage(...)（子包加载 + SDK init）
+如果广告接口响应慢，甚至接近你设的 8 秒超时，那游戏的核心初始化全部被这一步拖住了。玩家看到的就是：
+场景刚切进来，一片静止/黑屏/背景静止；
+好几秒什么都没动，看起来像“卡死”。
+真正的“阻塞线程”是：有长时间的同步计算（比如 while(true)、大量循环、巨量 JSON 处理）在主线程执行，直到执行完之前渲染和交互都无法进行。
+在你这段代码里，没有这种长同步逻辑，更多是一种“把初始化逻辑串在广告 Promise 后面，导致初始化全面延迟”的问题。
+所以：本质原因不是 async/await 阻塞线程，而是“把整个初始化流程都写在了 await 后面”，广告一慢，全局都跟着慢。
+2. 在 Vue3 组件生命周期里会怎样？
+Vue3 本质上也是跑在浏览器的 JS 单线程之上。规则和 Cocos 中的 JS 是一样的：
+async setup() / async mounted() 中的 await：
+只会暂停当前这个生命周期函数后半段的执行；
+不会阻塞浏览器的事件循环，不会让整个 tab 真·死掉；
+但如果你把首屏渲染／UI 初始化都放在 await 之后，就会出现：
+组件很久才显示出来
+或者显示出来后逻辑/动画长时间不动
+看起来“卡”了很久
+示例（不推荐）：
+ts
+onMounted(async () => {
+  // 在这里 await 一个很慢的请求
+  await loadAd();     // 广告很慢
+  initUI();           // UI 初始化被推迟
+});
+用户看到的现象就是：页面长时间没有完成挂载或者 UI 不更新，看起来像“挂死”，但从技术上讲线程还在跑，只是你什么都没画/没更新而已。真正会卡死 Vue3 的情况同样是：在生命周期里写了非常重的同步计算，例如：
+ts
+onMounted(() => {
+  // 非常大的同步循环，会真·堵塞渲染
+  for (let i = 0; i < 1e10; i++) { /* ... */ }
+});
+这里跟 Cocos 的逻辑完全一样。Vue3 官方生命周期文档：
+https://cn.vuejs.org/guide/essentials/lifecycle.html
+3. 应该怎么改，避免“卡死感”？
+思路：把广告加载变成“后台任务”，不要挡住初始化
+你现在的写法：
+ts
+async start () {
+    window['loadNativeAd'] = this.loadNativeAd;
+    await this.createNativeAd('i7ik1b3mgg');   // 卡住后面所有初始化
+    this.loadingUI.show(0);
+    // ... 一堆初始化
+}
+更合理的写法是：
+先让 UI / 游戏核心流程启动；
+广告加载作为一个独立的异步任务去跑；
+等广告准备好了，再在需要的地方使用它（例如进入某个界面时判断广告列表有没有数据）。
+一个改法示例：
+ts
+async start () {
+    // 先把存放广告的数组挂到全局，避免访问报错
+    window['loadNativeAd'] = this.loadNativeAd;
+
+    // 立刻展示 loading UI
+    this.loadingUI.show(0);
+
+    // 异步加载广告，但不 await，让它在后台跑
+    this.createNativeAd('i7ik1b3mgg').catch((err) => {
+        console.error('load native ad failed:', err);
+    });
+
+    // 后面正常做初始化，不被广告阻塞
+    playerData.instance.syncServerTime(Date.now());
+
+    localConfig.instance.loadConfig(()=>{
+        this.lbVersion.string = `版本 ${Constants.Version}`;
+        this.isConfigLoaded = true;
+        this.loadMainScene();
+    });
+
+    playerData.instance.loadGlobalCache();
+    if (!playerData.instance.userId) {
+        this.uid = configuration.generateGuestAccount();
+    } else {
+        this.uid = playerData.instance.userId;
+    }
+    this.startLogin();
+    this.initMusic();
+
+    this.loadGameSubPackage(() => {
+        console.log('subpackage download finished!');
+        this.isSubPackageFinished = true;
+        TyqEventMgr.ins.sendEvent("进入加载页");
+        this.loadMainScene();
+    }).then(()=>{
+        console.log("---------子包加载完毕----------")
+    });
+}
+要点：
+createNativeAd 仍然是异步的、有超时保护；
+但 start 不再等待它，初始化流程和场景加载可以照常进行；
+广告什么时候准备好，就什么时候往 window['loadNativeAd'] 里 push；真正用广告的时候再检测这个数组。
+如果你确实必须在某个时刻“等广告”，可以在那个时刻再 await，而不是把整个 start 挂在那里。例如玩家点“看广告领取奖励”按钮的时候：
+ts
+async onClickShowAd() {
+    // 如果之前没加载/加载失败，这里再尝试一次，并允许等待
+    await this.createNativeAd('i7ik1b3mgg');
+    // 然后展示广告 / 提示
+}
+4. 类比到 Vue3 的推荐做法
+Vue3 里同理：
+不要在 setup 或 mounted 中写类似：
+ts
+  onMounted(async () => {
+    await loadAd();      // 很慢
+    initPage();          // 页面初始化被推迟
+  });
+更推荐：
+ts
+  const ads = ref([]);
+
+  onMounted(() => {
+    initPageImmediately(); // 先把基础 UI 画出来
+
+    loadAd().then((data) => {
+      ads.value = data;
+    }).catch((e) => {
+      console.error(e);
+    });
+  });
+或者：
+ts
+onMounted(() => {
+  initPageImmediately();
+  loadAdInBackground();
+});
+只有在与用户交互强相关，且用户可以接受等待的地方，才去 await，同时用 loading 状态提示用户。
+5. 小结
+async/await 不会阻塞整个线程，但会让当前函数后面的逻辑一直等 Promise，容易把“初始化 / 首屏渲染”绑死在某个慢接口上，从而表现出“页面卡死”。
+你的 Cocos 示例里，就是把所有初始化逻辑都放在 await createNativeAd 后面，所以广告慢 = 游戏启动慢。
+在 Vue3 生命周期里写法类似，也会带来相同的问题：首屏渲染延迟，而不是字面上的线程阻塞。
+解决办法：
+生命周期里：先让 UI 显示 / 核心逻辑启动；
+把广告/网络请求等耗时操作改为后台异步任务；
+只有在确实需要结果的那一刻再 await，并用加载状态给用户反馈。
+如果你愿意，我可以帮你把这段 start 逻辑重构成“广告后台加载 + 初始化并行”的完整版本，再一起看下是否还有可能的卡顿点。
+
+
+## 错误处理怎么做才是最合理的？方便打印出错误
+
+对你这个 createNativeAd 来讲，最合理的错误处理方式是：
+在 createNativeAd 内部统一把失败情况转成 reject(Error)，成功才 resolve；
+在调用处（比如 start）只写一层 try/catch 或 .catch 来打印错误；
+不要“所有情况都 resolve()”，否则上层根本区分不了成功 / 失败 / 超时，只能靠日志肉眼看。
+下面结合你当前代码，给一个比较实用的改法。
+1. 优化 createNativeAd 的错误处理
+你现在的实现里，无论是 onError 还是超时，都是 resolve()，错误实际上被“吞掉”了：
+ts
+const timeout = setTimeout(() => {
+    if (!isResolved) {
+        console.warn(`[广告加载] ${adUnitId} - 超时（5秒未响应）`);
+        isResolved = true;
+        resolve();                       // ← 超时也算成功结束
+    }
+}, 8000);
+
+// onError 里也是 resolve()
+MynativeAd.onError(function (test) {
+    console.error(`[广告加载] ${adUnitId} - onError: ${test.errCode} - ${test.errMsg}`);
+    if (!isResolved) {
+        clearTimeout(timeout);
+        isResolved = true;
+        resolve();                       // ← 失败也算成功结束
+    }
+});
+这种写法的结果：
+上层 await this.createNativeAd() 永远不会抛异常；
+你只能在控制台人肉看日志，逻辑上没法判断“广告到底成功没”。
+更合理的做法：成功 resolve，错误/超时 reject，并在 reject 时构造一个 Error 对象，方便打印与上报。示例改法（保持 Promise<void> 类型不变，只是区分成功/失败）：
+ts
+createNativeAd(adUnitId: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+        console.log(`[广告加载] 开始加载广告位: ${adUnitId}`);
+
+        let finished = false;
+
+        const finish = (err?: any) => {
+            if (finished) return;
+            finished = true;
+            clearTimeout(timeout);
+
+            if (err) {
+                // 统一把错误转成 Error，方便调用方打印 / 上报
+                const error =
+                    err instanceof Error
+                        ? err
+                        : new Error(typeof err === 'string'
+                            ? err
+                            : JSON.stringify(err));
+                console.error(`[广告加载] ${adUnitId} - 失败:`, error);
+                reject(error);
+            } else {
+                console.log(`[广告加载] ${adUnitId} - 成功`);
+                resolve();
+            }
+        };
+
+        const timeout = setTimeout(() => {
+            finish(new Error(`[广告加载] ${adUnitId} - 超时（8秒未响应）`));
+        }, 8000);
+
+        let MynativeAd = qg.createNativeAd({
+            adUnitId,
+            success(code) {
+                console.log(`[广告加载] ${adUnitId} - success`, code);
+            },
+            fail(data, code) {
+                finish({ data, code, msg: 'qg.createNativeAd fail' });
+            },
+            complete() {
+                console.log(`[广告加载] ${adUnitId} - complete`);
+            }
+        });
+
+        MynativeAd.offLoad();
+        MynativeAd.onLoad(function (test: any) {
+            if (!test.adList || test.adList.length === 0) {
+                finish(new Error(`[广告加载] ${adUnitId} - onLoad 返回空列表`));
+                return;
+            }
+
+            let adId = test.adList[0].adId;
+            let adData = test.adList[0];
+
+            console.log(`[广告加载] ${adUnitId} - onLoad 成功, length: ${test.adList.length}`);
+            console.log(JSON.stringify(test));
+
+            try {
+                window['loadNativeAd'].push({ nativeAd: MynativeAd, data: adData, adId });
+                console.log(`[广告加载] 数据已存入, 当前总数: ${window['loadNativeAd'].length}`);
+            } catch (e) {
+                finish(e);
+                return;
+            }
+
+            finish(); // 成功
+        });
+
+        MynativeAd.offError();
+        MynativeAd.onError(function (test: any) {
+            finish({
+                errCode: test.errCode,
+                errMsg: test.errMsg,
+                from: 'onError'
+            });
+        });
+
+        MynativeAd.load();
+    });
+}
+要点：
+只通过一个 finish(err?) 来结束 Promise，避免多处重复逻辑；
+错误 / 超时都走 reject 路线，上层可以用 try/catch 捕获；
+console.error 统一集中在内部 finish(err) 中打印，方便调试；
+遵守“异步接口保持 Promise 类型一致”的经验：依然返回 Promise<void>，调用方式不变。
+2. 调用处如何打印错误（避免阻塞初始化）
+你之前 start 里是这样：
+ts
+async start () {
+    window['loadNativeAd'] = this.loadNativeAd;
+    await this.createNativeAd('i7ik1b3mgg');
+    // 后面一堆初始化...
+}
+出于“不想卡住初始化”的考虑，我建议改成后台加载 + 错误打印的方式：
+ts
+async start () {
+    window['loadNativeAd'] = this.loadNativeAd;
+
+    // 先显示 UI，开始正常初始化
+    this.loadingUI.show(0);
+
+    // 广告后台加载，如果失败只打一条错误日志
+    this.createNativeAd('i7ik1b3mgg')
+        .catch((err) => {
+            console.error('[广告加载] i7ik1b3mgg 失败:', err);
+        });
+
+    // ↓ 下面照常初始化，完全不被广告阻塞
+    playerData.instance.syncServerTime(Date.now());
+    localConfig.instance.loadConfig(()=>{ ... });
+    this.startLogin();
+    this.initMusic();
+    this.loadGameSubPackage(() => { ... }).then(() => {
+        console.log("---------子包加载完毕----------");
+    });
+}
+如果你在某个特定场景 必须等待广告（比如点击“看广告领奖励”按钮），那就像这样：
+ts
+async onClickRewardAd() {
+    try {
+        await this.createNativeAd('i7ik1b3mgg');
+        // TODO: 广告准备好了，展示广告 / 发放奖励
+    } catch (err) {
+        console.error('[奖励广告] 加载失败:', err);
+        // TODO: 用对话框提示玩家“广告拉取失败，请稍后重试”
+    }
+}
+好处：
+所有错误统一通过 console.error 打印，堆栈信息更完整；
+调用处只要一层 catch 就能拿到错误对象；
+不会因为广告失败或超时就让整个 start 卡住。
+3. 如果想记录更多信息
+你还可以在 Error 里附加更多字段，方便筛查，例如：
+ts
+const error = new Error(`[广告加载] ${adUnitId} - 超时`);
+(error as any).code = 'NATIVE_AD_TIMEOUT';
+(error as any).adUnitId = adUnitId;
+reject(error);
+这样在日志或上报处可以按 code / adUnitId 分类统计。
+4. 参考文档（外部）
+MDN - try...catch：
+https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Statements/try...catch
+MDN - Promise：
+https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Global_Objects/Promise
+MDN - Error 对象：
+https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Global_Objects/Error
+如果你愿意，我可以根据你实际想要的逻辑（比如：超时算失败还是算“忽略继续”）给出一版更精简、直接可替换到 loginCanvas.ts 里的最终代码。
+
+
+## 如何判断同步代码和异步代码？类似于fetch等网络请求，文件操作怎么看出来是异步代码，他们通常都是return pormise吗
+
+一、从概念上区分：同步 vs 异步
+在 JavaScript 里（浏览器、Cocos、Node 都一样）：
+同步代码（synchronous）
+这一行没执行完，后面的代码不会开始执行。
+如果这一行很慢（大循环、复杂计算），整个页面/游戏都会卡住。
+执行路径是“一路往下走”的。
+异步代码（asynchronous）
+先发起一个操作，然后当前函数先返回，真正的结果在“未来某个时刻”通过回调、Promise 再回来。
+这段时间内，主线程是空出来的，可以继续渲染 / 响应事件。
+常见于：网络请求、定时器、文件读写、资源加载、动画等。
+推荐阅读（概念非常重要）：
+MDN：事件循环（JS 为什么需要异步）
+https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/EventLoop
+二、从代码“外观”上怎么判断？
+1. 最“现代”的异步：返回 Promise / 使用 async/await
+特征 A：函数签名直接返回 Promise
+ts
+function loadData(): Promise<Data> {
+  return fetch('/api/data').then(res => res.json());
+}
+函数直接返回 Promise，这是异步函数的最明确标志。
+调用方要么 .then，要么 await：
+ts
+// then
+loadData().then(data => { ... });
+
+// await（在 async 函数里）
+async function foo() {
+  const data = await loadData();
+  ...
+}
+如果你看到：
+ts
+function func(): Promise<...> { ... }
+基本可以断定：这是异步函数。fetch 就是浏览器里最典型的例子：
+https://developer.mozilla.org/zh-CN/docs/Web/API/fetch
+ts
+const promise = fetch('https://example.com'); // 返回 Promise<Response>
+特征 B：函数使用了 async 关键字
+ts
+async function foo() {
+  const res = await fetch('/api'); // 这里一定是异步操作
+  return res.json();
+}
+async 函数 一定返回 Promise（不写也会被包装成 Promise），所以它本身就是一个异步接口。
+await 后面 99% 是个 Promise（或可 then 的对象）。
+async function 参考：
+https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Statements/async_function
+2. “老派”的异步：回调 / 事件风格
+在 Promise 之前，很多异步 API 是用“回调函数”表示的：
+A. 回调型 API（常见于 Node.js、老库、Cocos 的资源加载）
+示例：Node.js fs.readFile（异步）：
+js
+fs.readFile('foo.txt', 'utf8', (err, data) => {
+  if (err) throw err;
+  console.log(data);
+});
+console.log('这行会先执行');
+函数没有返回 Promise，而是接受一个回调函数。
+回调参数的形式常见是 (err, data) => {} 或 (data) => {}。
+函数调用后不会阻塞后面的代码，真正的结果在回调里出来。
+Node.js fs 文档：
+https://nodejs.org/api/fs.html你在 Cocos 里的这种也属于异步：
+ts
+assetManager.loadBundle(name, (err, bundle) => {
+  // 这里是异步回调
+});
+loadBundle 不是 Promise，但通过回调表示“将来有结果”。
+B. 事件型 API（如 FileReader、WebSocket、定时器）
+ts
+const reader = new FileReader();
+reader.onload = (e) => {
+  console.log('文件读取完成:', e.target?.result); // 异步触发
+};
+reader.readAsText(file); // 发起异步操作
+console.log('这行会先执行');
+或者：
+ts
+setTimeout(() => {
+  console.log('1秒后执行'); // 异步
+}, 1000);
+函数立即返回；
+结果在某个时间点通过事件/回调再通知。
+FileReader 文档：
+https://developer.mozilla.org/zh-CN/docs/Web/API/FileReader
+三、网络请求 / 文件操作：怎么看它是不是异步？
+1. 网络请求（fetch / XMLHttpRequest / Cocos SDK 调用）
+fetch：一定是异步，返回 Promise（浏览器 / 部分小游戏环境兼容）。
+ts
+const p = fetch('/api'); // p 是 Promise
+XMLHttpRequest：默认异步。open 的第三个参数如果是 true 或省略，就是异步；如果传 false，才是同步（但几乎不推荐用同步，因为会卡线程）。
+ts
+const xhr = new XMLHttpRequest();
+xhr.open('GET', '/api', true); // true = 异步
+xhr.onload = () => { ... };
+xhr.send();
+小游戏平台 SDK（如你用的 qg.createNativeAd、wx.request 等）：绝大多数都是异步，通常通过回调/事件来告诉你成功或失败。
+只要看到 “先调用一个函数，然后通过 onXXX / success / fail 再拿结果”，基本就是异步。
+2. 文件操作
+浏览器端：
+文件访问都是异步的（File API、IndexedDB 等），要么回调要么 Promise，要不然就事件。例如上面的 FileReader。
+Node.js 端：
+同一个 fs 模块里既有同步的，也有异步的：
+异步：
+js
+    fs.readFile('foo.txt', 'utf8', (err, data) => { ... }); // 回调 → 异步
+    await fs.promises.readFile('foo.txt', 'utf8');          // Promise → 异步
+同步：
+js
+    const data = fs.readFileSync('foo.txt', 'utf8'); // Sync 结尾 → 同步
+    // 这行执行期间会阻塞主线程
+Node.js fs 文档：
+https://nodejs.org/api/fs.html判断方式总结：
+名字里带 Sync 的（readFileSync、writeFileSync）→ 同步；
+接受回调函数、通过回调返回结果的 → 异步；
+返回 Promise 的 → 异步。
+四、回到你的问题：他们“通常都是 return Promise 吗？”
+回答是：
+现代 Web / Node 新 API：多数异步接口确实都采用 Promise（或支持 Promise）：
+fetch
+Response.json()（返回 Promise）
+fs/promises.readFile
+navigator.clipboard.writeText 等等
+但不是所有异步接口都 return Promise：
+老 API 多用“回调 + 事件”的形式（XMLHttpRequest、FileReader、WebSocket、Cocos 的大部分资源加载、小游戏广告/视频接口等）。
+一些第三方 SDK 也可能只提供回调，不提供 Promise。
+所以更稳妥的判断思路是：
+看返回值
+如果返回的是 Promise → 异步；
+如果返回普通值，但结果要在回调/事件里拿 → 异步；
+如果返回普通值，且调用之后就立即有结果使用 → 同步（例如普通的数学计算函数）。
+看使用方式
+.then(...) / await / .catch(...) → Promise 异步；
+带回调参数 (err, data) => {} 或 onLoad(...) / onError(...) → 异步；
+没有任何回调/Promise，只是直接返回计算结果 → 同步。
+五、结合你现在的 Cocos 代码再看一眼
+你写的：
+ts
+createNativeAd(adUnitId:string): Promise<void> {
+    return new Promise((resolve, reject) => {
+        // ...
+        MynativeAd.onLoad(function (test:any) {
+            // ...
+            resolve();
+        });
+        MynativeAd.onError(function (test) {
+            // ...
+            reject(error);
+        });
+        MynativeAd.load();
+    });
+}
+外部看到函数签名 Promise<void> → 明确是异步；
+内部也是用“事件 + Promise”结合实现异步逻辑；
+调用处 await this.createNativeAd(...) / .then().catch() → 都是标准异步用法。
+六、如果你不确定一个 API 是否异步，实战建议
+看官方文档（最可靠）
+比如 fetch：文档清楚写着“返回 Promise”。
+Cocos、小游戏 SDK 文档，一般都会写“回调在异步返回时触发”。
+在调用前后加 console.log 测试顺序
+ts
+console.log('before');
+apiCall(() => {
+  console.log('callback');
+});
+console.log('after');
+如果输出顺序是 before → after → callback，那一定是异步；
+如果 before → callback → after，那有可能是同步（或者回调被立即调用）。
+七、推荐文档（外部参考）
+MDN：Promise
+https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Global_Objects/Promise
+MDN：async function / await
+https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Statements/async_function
+MDN：fetch
+https://developer.mozilla.org/zh-CN/docs/Web/API/fetch
+Node.js：fs 模块（同步与异步方法对比）
+https://nodejs.org/api/fs.html
+如果你愿意，可以把你在 Cocos / Vue3 里具体某个 API 贴出来，我可以帮你逐个判断：它是同步还是异步、应该用 await 还是回调。
+
+
+## ​AdData.ts 135-137​ 节点未null时不会报错？
+
+这段代码本身不会自动帮你做空判断，如果 node 真的是 null / undefined，运行时是会报错的：
+ts
+private _setLayer(node: Node, layer: number) {
+    node.layer = layer;                              // ← 这里会直接抛错
+    node.children.forEach(child => this._setLayer(child, layer));
+}
+1. 分两种情况说
+① 正常情况：node 是合法 Node
+node.layer = layer：正常执行；
+node.children：是一个数组，就算没有子节点，也是空数组 []；
+[].forEach(...)：只是什么都不做，不会报错。
+所以只要传进来的 node 是一个有效的 Node 对象，这段代码是安全的。
+② 异常情况：node 为 null 或 undefined
+一旦 _setLayer(null as any, layer) 或 _setLayer(undefined as any, layer)：
+执行到 node.layer = layer 就会抛运行时错误：
+TypeError: Cannot set properties of null (setting 'layer')
+或类似的 “Cannot read properties of undefined”。
+也就是说，不会“悄悄忽略”，是会直接崩在第一行。
+TypeError 参考：
+https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Global_Objects/TypeError
+TypeScript 里它被声明成 node: Node，在类型层面已经假设调用者不会传 null，所以编译器不会强制你写空判断；但运行时如果你真的传了空值，照样会报错（TS 只做静态检查，不改变运行时行为）。TypeScript 非空类型说明：
+https://www.typescriptlang.org/docs/handbook/2/everyday-types.html#null-and-undefined
+2. 如果你想防御性一点，可以这样写
+如果你不完全信任调用方，想“就算传了 null 也不要炸”，可以在函数开头做空判断：
+ts
+private _setLayer(node: Node | null | undefined, layer: number) {
+    if (!node) return;                       // 防御：node 为空直接返回
+
+    node.layer = layer;
+    node.children.forEach(child => this._setLayer(child, layer));
+}
+同时，把函数签名也改成允许 null / undefined 更语义化：
+ts
+private _setLayer(node: Node | null | undefined, layer: number) { ... }
+这样：
+如果 node 是空：函数直接返回，不会报错；
+如果 node 是合法 Node：逻辑和原来一样，递归给所有子节点设置 layer。
+Cocos Creator Node API 文档（关于 children 的类型说明可以参考）：
+https://docs.cocos.com/creator/3.8/api/zh/classes/core.Node.html （版本号按你本地引擎调整）
+3. 回答你的原问题
+“节点为 null 时不会报错？”
+会报错，在 node.layer = layer 这一行就抛 TypeError；
+要么确保调用时永远不传 null，要么像上面那样加 if (!node) return; 做防御。
+prefabload.ts 141-157
+ 我隐藏这个button，然后销毁这个广告，那么下一次利用这个广告位id创建新的广告，然后又利用他的uid创建新的downloadbutton，那么上一个button未销毁，会不会造成内存泄露？
+prefabload.ts 141-157
+ 我隐藏这个button，然后销毁这个广告，那么下一次利用这个广告位id创建新的广告，然后又利用他的uid创建新的downloadbutton，那么上一个button未销毁，会不会造成内存泄露？
+Clarifying ad memory management
+我先确认一下这个广告 prefab 的整体使用流程（nativeAd 的来源、是否有缓存数组等），再结合小游戏官方文档解释这一段销毁逻辑会不会导致内存泄露，并给一套推荐的清理写法。
+核心结论先说清楚：
+单看你这段 close 代码，系统级的下载按钮不会“悬着不销毁”，因为你调用了：
+this._nativeAd.hideDownloadButton(...) → 隐藏 / 移除当前广告实例的下载按钮视图；
+this._nativeAd?.destroy() → 通知 SDK 释放这个广告实例相关的资源；
+下次用同一个 adUnitId 再 createNativeAd 时，是一个全新的广告实例 + 新的下载按钮，不会继续占用上一个按钮的原生资源。
+真正危险的是：JS 侧有没有还在持有旧广告的引用（比如你项目里的 window['loadNativeAd'] 缓存），如果还在把旧的 { nativeAd, data, adId } 挂在全局数组里，就会持续占用 JS 堆，算广义上的“内存泄漏”。
+1. 看你当前的 close 实现
+ts
+close() {
+    this._nativeAd.hideDownloadButton({
+        adId: this.adId,
+        success: (code) => {
+            console.log("hideDownloadButton: success");
+        },
+        fail: (data, code) => {
+            console.log(" hideDownloadButton fail: " + data + "," + code);
+        },
+        complete: () => {
+            console.log("hideDownloadButton : complete");
+        }
+    });
+
+    this._nativeAd?.destroy();
+    this.node.destroy();
+}
+系统侧（小游戏 SDK/native 视图）角度
+hideDownloadButton 一般是让 SDK 把这个广告实例对应的“原生下载按钮”从屏幕上移除或隐藏；
+destroy() 按照大部分广告 SDK 的约定，都会：
+释放该广告实例占用的原生资源（view、listener 等）；
+该实例之后不能再用来展示广告。
+参考一个比较通用的广告 SDK 文档（AdMob Android Native Ads），也明确要求 NativeAd 用完必须 destroy() 避免内存泄漏：
+https://developers.google.com/ad-manager/mobile-ads-sdk/android/native/advanced
+虽然你用的是 qg.createNativeAd，不是 AdMob，但资源管理理念是一样的：
+用完的广告实例要显式销毁，下一次用同一个 adUnitId 重新创建新的实例。
+所以，如果你按现在流程：
+隐藏按钮 → destroy → 下次重新 createNativeAd + 创建新的 downloadButton
+从 SDK / 原生视图角度看，是不会因为“上一个 button 没销毁”而无限泄露的。
+2. JS 层面可能的“泄露点”：全局缓存 & 引用
+你项目中在 loginCanvas.ts 里有类似代码（之前我们看过）：
+ts
+window['loadNativeAd'].push({ nativeAd: MynativeAd, data: adData , adId: adId });
+这意味着：
+每次加载广告，你都会把 { nativeAd, data, adId } 存进一个全局数组；
+即便 nativeAd.destroy() 了，如果你没有从这个数组里删除它，JS 依然有引用；
+JS 的垃圾回收机制是“没有引用的对象才会被回收”，所以这个对象会一直留在堆里，数量多了就是内存占用持续上升。
+这就跟我们项目规范记忆里的说法一致：
+广告对象不会自动销毁，必须显式调用 destroy；
+同时不要长时间挂在全局缓存中，否则会积累。
+所以：
+从“广告按钮是否销毁”的角度：你调用 hideDownloadButton + destroy 已经 OK；
+从“整个广告对象是否被彻底回收”的角度：你还需要在关闭时把它从缓存中移除 / 置空，否则 JS 层面会存在长期引用，造成堆内存增长。
+3. 推荐的完整关闭流程（更稳妥的写法思路）
+建议在 close() 里做三件事：
+隐藏下载按钮（你已经有了）；
+销毁广告实例 + 断开 JS 引用；
+从全局缓存（如 window['loadNativeAd']）中移除对应 adId 的记录。
+伪代码思路（示例）：
+ts
+close() {
+    if (!this._nativeAd) {
+        this.node.destroy();
+        return;
+    }
+
+    this._nativeAd.hideDownloadButton({
+        adId: this.adId,
+        complete: () => {
+            // 1. 销毁广告实例（原生资源）
+            this._nativeAd?.destroy();
+            // 2. 断开当前脚本对广告的引用
+            this._nativeAd = null;
+
+            // 3. 同时从全局缓存中移除（伪代码）
+            const list = window['loadNativeAd'] as Array<any>;
+            if (Array.isArray(list)) {
+                const idx = list.findIndex(item => item.adId === this.adId);
+                if (idx >= 0) {
+                    list.splice(idx, 1);
+                }
+            }
+
+            // 4. 销毁 prefab 自己的节点
+            this.node.destroy();
+        }
+    });
+}
+这样：
+SDK 侧按钮视图：hideDownloadButton + destroy() 负责；
+JS 侧：
+this._nativeAd = null 避免脚本继续持有引用；
+从 window['loadNativeAd'] 中删掉，也就不会有多余的缓存积累；
+下次 createNativeAd 使用同一个 adUnitId 只会创建新对象，不会与旧对象构成链条。
+4. 回答你的原问题
+“我隐藏这个 button，然后销毁这个广告……下一次用同一个广告位 id 创建新的广告，再创建新的 downloadButton，上一个 button 未销毁，会不会造成内存泄露？”
+不会因为“button 自己没销毁”导致泄露：
+因为：
+hideDownloadButton 已经把旧按钮从 UI 中移除；
+destroy() 会释放这个广告实例的原生资源；
+新的广告实例是全新的，对应的是新的按钮。
+真正需要注意的是：
+JS 层是否还有对旧广告实例的引用（比如全局数组、静态变量等）。
+这个要靠你在 close() 或其他生命周期里主动从缓存里移除 / 置 null，这样 GC 才能把它完全回收，避免堆内存越积越多。
+如果你愿意，可以把 window['loadNativeAd'] 的使用代码也贴一下，我可以帮你设计一条“从创建 → 展示 → 关闭 → 清理”的完整生命周期，确保广告对象和按钮都不会残留

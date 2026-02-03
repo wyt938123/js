@@ -1,0 +1,1705 @@
+请解释以下代码问题并进行修复：
+``` assets/script/mainCanvas.ts
+类型“never”上不存在属性“instantiate”。 ts(2339)
+```我来帮您查看并修复这个问题。首先让我读取这个文件的内容。已查看mainCanvas.ts我找到问题了！在第 86 行，代码使用了 cc.instantiate()，但是在 Cocos Creator 3.x 版本中，已经不再使用全局的 cc 对象了。问题原因：
+在 Cocos Creator 3.x 中，所有 API 都需要从相应的模块导入，而不能使用全局的 cc 命名空间。代码中第 11 行已经正确导入了新版本的模块，但第 86 行却使用了旧版本的 cc.instantiate()。解决方案：
+需要从 cc 模块导入 instantiate 函数，然后直接使用 instantiate()。让我为您修复这个问题：‎mainCanvas.ts+3-3M已应用完美！问题已经修复。让我为您总结一下：问题解释与修复问题原因：
+在第 86 行使用了 cc.instantiate(this.adPrefab)，这是 Cocos Creator 2.x 的旧语法。在 Cocos Creator 3.x 中，cc 作为全局对象已被废弃，TypeScript 将其类型推断为 never，因此报错"类型'never'上不存在属性'instantiate'"。修复内容：✅ 在第 11 行的导入语句中添加了 instantiate 函数✅ 将第 86 行的 cc.instantiate() 改为直接使用 instantiate()✅ 顺便修复了第 89 行的 zIndex 属性为 setSiblingIndex() 方法（Cocos Creator 3.x 的新 API）现在代码已经符合 Cocos Creator 3.x 的标准，TypeScript 编译错误已解决！​mainCanvas.ts 1-361​ 广告为什么没有呈现到页面上，是场景不对吗​mainCanvas.ts 1-361​ 广告为什么没有呈现到页面上，是场景不对吗让我分析一下为什么广告没有显示在页面上。我需要检查几个关键点：已探索1文件 1检索已查看mainCanvas.ts(83 - 282)已检索仓库adPrefab scene hierarchy parent node Canvas15 个结果根据代码分析，我发现了广告无法显示的几个可能原因：问题分析预制体位置设置不正确：在第 86-88 行，代码设置了 setPosition(0, 0)，但没有设置 Z 轴坐标，可能导致节点被遮挡。父节点问题：this.node 是 mainCanvas 组件所在的节点。从其他广告代码可以看到，通常是直接添加到 find("Canvas") 下，而不是其他节点。层级问题：使用 setSiblingIndex(100) 可能不够大，其他广告代码使用了 9999、99999 等更大的值。节点激活状态：没有显式设置 active = true。UITransform 组件：可能缺少必要的 UITransform 组件或尺寸设置。让我查看一下广告预制体的具体情况：已探索1检索 8目录已检索文件**/InitAd.prefab1 个结果已查看目录ui8 个结果现在让我修复代码，参考其他广告代码的正确实现方式：‎mainCanvas.ts+11-4M已应用完美！我已经修复了广告无法显示的问题。让我总结一下修改内容：问题原因与解决方案主要问题：错误的父节点：原代码将广告添加到 this.node（mainCanvas 组件所在节点），而不是 Canvas 节点层级索引太小：使用 100 可能不够，被其他 UI 元素遮挡位置设置不完整：只设置了 2D 位置 (x, y)，没有设置 z 轴未显式激活节点：可能节点默认未激活修复内容：✅ 使用 find("Canvas") 查找 Canvas 节点，将广告直接添加到 Canvas 下（参考其他广告代码的标准做法）✅ 设置完整的 3D 位置 setPosition(0, 0, 0)，确保 z 轴也被正确设置✅ 使用更大的层级索引 setSiblingIndex(9999)，确保在所有 UI 元素之上✅ 显式激活节点 adNode.active = true✅ 添加了 Canvas 节点检查，如果找不到会输出错误日志✅ 改进日志输出，显示位置信息便于调试这样修改后，广告预制体会被正确添加到 Canvas 节点的最上层，应该可以正常显示了。如果还有问题，可以检查：编辑器中是否正确绑定了 adPrefab预制体内部的节点是否都是激活状态预制体的 UITransform 尺寸设置是否正确根据脚本判断，为什么不显示？根据脚本判断，为什么不显示？让我查看一下图片中的场景信息，并检查代码逻辑来找出问题。已探索2文件已查看dwfl3egq-90725d96.png已查看mainCanvas.ts(66 - 265)从图片和代码分析，我发现了问题所在！关键问题：mainCanvas 组件挂载的节点不在 main 场景中！从图片可以看到：左侧层级面板显示的是 main 场景，里面有 Canvas 节点和 NvAd-md 节点而 mainCanvas.ts 脚本是在 login 场景的 Canvas 节点上运行的（根据项目结构）让我检查一下场景信息：已探索2检索已检索仓库login scene Canvas mainCanvas component scene loading15 个结果已检索代码director\.loadScene3 个结果非常好！我找到了根本问题！根据代码和截图分析：问题根源mainCanvas 组件在 main 场景中，但 start() 方法在场景切换时执行，此时调用 find("Canvas") 是正确的。但问题是：图片显示的是编辑器场景视图，你看到的 NvAd-md 节点是静态预制的场景节点，不是运行时动态创建的广告代码在 start() 中执行，这时会创建广告节点，但你需要在运行时查看，而不是编辑器场景视图但我注意到还有一个潜在问题：find("Canvas") 在 start() 中调用时，当前场景就是 main 场景，应该能找到。让我检查是否真的找到了Canvas，并添加更详细的调试：‎mainCanvas.ts+13-2M已应用我需要导入 director，让我修复这个错误：已查看mainCanvas.ts(1 - 200)‎mainCanvas.ts+2-2M已应用很好！现在让我总结一下为什么广告不显示，以及如何排查：问题诊断总结根据代码和截图分析，广告不显示的可能原因：1. 编辑器视图 vs 运行时视图📷 截图显示的是编辑器的场景视图，不是运行时你看到的 NvAd-md 是静态场景节点，不是代码动态创建的广告需要运行游戏查看控制台日志和运行时层级2. 可能的具体问题✅ 现在已修复的代码问题：添加了详细的调试日志正确导入 Canvas 节点设置完整的位置和层级❓ 需要检查的问题：A. adPrefab 未绑定在编辑器中，找到 main 场景的 Canvas 节点查看 mainCanvas 组件的 adPrefab 属性是否绑定了预制体B. 预制体内容问题InitAd 预制体内部节点可能默认是隐藏的（active = false）UITransform 尺寸可能是 0C. 层级/渲染问题可能被其他 UI 遮挡Camera 渲染层级设置问题3. 排查步骤请按照以下步骤排查：运行游戏（不是查看编辑器场景）查看控制台输出，应该会看到：plaintextGameMain5 start, 准备检查广告预制体...
+adPrefab 值: [object]
+广告预制体存在，开始实例化
+实例化后的节点: [Node] name: InitAd
+查找 Canvas 节点结果: [Node]
+找到 Canvas 节点，开始添加子节点...
+子节点添加成功
+广告预制体已添加到 Canvas 节点: InitAd 位置: {...} active: true parent: Canvas
+广告节点的子节点数量: X如果看到"adPrefab 属性未绑定"错误：在编辑器中打开 main 场景选中 Canvas 节点，查看 mainCanvas 组件将 InitAd.prefab 拖到 adPrefab 字段如果节点添加成功但看不到：检查运行时层级面板，看 InitAd 节点是否在 Canvas 下检查 InitAd 预制体内部的子节点是否都是激活状态请运行游戏并分享控制台日志，这样我可以帮你进一步诊断！是不是没有使用ui2是不是没有使用ui2对！你说得对！UITransform 的尺寸是 400x500，但这个节点没有使用 Widget 组件来对齐布局！从图片可以看到：ContentSize: 400 x 500（尺寸正常）AnchorPoint: 0.5, 0.5（中心锚点）Position: 0, 0, 0（在 Canvas 中心）但是缺少 Widget 组件这意味着广告节点虽然被添加到了 Canvas，但它的定位方式可能不符合你的预期。让我检查一下你的布局规范记忆：根据记忆，你有广告布局规范。让我查看 InitAd 预制体是否应该使用 Widget：已探索1文件 1检索已检索记忆广告主图布局 顶部对齐 宽度400 Widget UI布局3 个结果已查看InitAd.prefab(1 - 200)是不是没有layer没有使用ui_2d是不是没有layer没有使用ui_2d完全正确！ 你发现了关键问题！从截图可以看到：Layer: DEFAULT（默认层）但在 Cocos Creator 3.x 中，UI 元素应该使用 UI_2D 层，而不是 DEFAULT 层！问题分析DEFAULT 层 vs UI_2D 层的区别：DEFAULT 层：用于 3D 对象和一般节点UI_2D 层：专门用于 UI 渲染，会被 UI Camera 渲染如果广告节点在 DEFAULT 层，而 Canvas 的 Camera 只渲染 UI_2D 层，那么广告就不会显示！解决方案需要在代码中设置广告节点的 Layer 为 UI_2D。让我修复代码：‎mainCanvas.ts+14-3M已应用完美！现在代码已经修复了 Layer 设置问题。让我总结一下修复内容：✅ 已修复的问题1. Layer 设置错误（最关键！）❌ 原问题：广告节点使用 DEFAULT 层✅ 已修复：设置为 UI_2D 层📝 原因：UI Camera 只渲染 UI_2D 层的节点2. 递归设置所有子节点的 Layer不仅设置根节点的 Layer还递归设置所有子节点的 Layer确保整个广告预制体都在正确的渲染层3. 增强的调试日志输出节点的 layer 信息输出子节点的 layer 信息便于排查问题修复原理typescript// 设置节点 Layer
+adNode.layer = Layers.Enum.UI_2D;
+
+// 递归设置所有子节点
+const setLayerRecursively = (node: Node) => {
+    node.layer = Layers.Enum.UI_2D;
+    node.children.forEach(child => setLayerRecursively(child));
+};
+setLayerRecursively(adNode);现在请测试运行游戏后，广告应该能正常显示了！控制台会输出：plaintext已设置广告节点及其子节点的 Layer 为 UI_2D
+广告预制体已添加到 Canvas 节点: InitAd ... layer: 1073741824Layer 值 1073741824 就是 UI_2D 的枚举值。如果还是不显示，请分享运行时的控制台日志！加载的是ui/2d修改一下加载的是ui/2d修改一下我理解了！你是说预制体路径应该是 ui/InitAd 而不是其他路径。让我检查一下当前的预制体加载位置和路径：已探索1文件 1检索已查看prefabload.ts已检索代码adPrefab|InitAd15 个结果我的布局图是2d的远程我的布局图是2d的远程明白了！我看到了：Layer 已经是 UI_2D ✅（这个正确）位置是 (0, 125, 0) - Y轴偏移了125尺寸是 400x250这是一个远程加载的 2D 图片节点（img）。现在我理解你的需求了 - 你想要动态加载远程图片并显示为广告。让我看一下 prefabload.ts 中的图片加载逻辑，并确认是否需要修改 mainCanvas 的代码来支持远程图片加载：已查看InitAd.ts现在我明白了！你的广告系统包含两部分：InitAd 预制体 - 一个对话框容器远程2D图片 - 通过 prefabload.ts 加载远程图片并填充到 InitAd 中从图片看，这个 img 节点：Layer: UI_2D ✅位置: (0, 125, 0)尺寸: 400x250问题是：在 mainCanvas.ts 中，我们直接实例化了 adPrefab，但没有触发 InitAd 的 show() 方法，也没有调用 AdCtl 来创建和显示广告内容！让我修改 mainCanvas.ts，让它正确初始化广告：已查看mainCanvas.ts(83 - 282)我发现代码中已经有延迟5秒的Promise了。但是问题在于没有调用 InitAd 组件来初始化广告内容。让我检查一下你是否想要：仅显示静态预制体？还是需要加载远程图片数据？根据 prefabload.ts 的代码，它会从 window['NativeAdData'] 读取广告数据并加载远程图片。让我为你提供一个更完整的解决方案 - 在实例化后调用 InitAd 组件：已探索1工具调用‎mainCanvas.ts已取消远程图片尺寸为什么超过了设置的尺寸？远程图片尺寸为什么超过了设置的尺寸？我看到问题了！SizeMode 设置为 TRIMMED（裁剪模式），这会导致 Sprite 根据图片的实际内容自动调整尺寸，而不是遵循 ContentSize 的设置。问题原因当 SizeMode = TRIMMED 时：Sprite 会使用图片的原始尺寸忽略 UITransform 的 ContentSize 设置图片有多大就显示多大（除非 Trim 被勾选且图片有透明边缘）解决方案需要将 SizeMode 改为 CUSTOM，这样才会使用 ContentSize (400x250) 来限制图片尺寸。让我修改 prefabload.ts 中的图片加载逻辑，在设置 SpriteFrame 时强制使用 CUSTOM 模式：‎prefabload.ts+5-1M已应用完美！现在代码已经修复了。让我总结一下：✅ 问题解决问题原因SizeMode: TRIMMED 导致图片使用原始尺寸，忽略 ContentSize (400x250) 的限制远程加载的图片会按原始尺寸显示，超出设定范围修复方案在 prefabload.ts 的 loadImg 方法中：✅ 导入 Sprite 类型（已经在代码中）✅ 设置 this[key].sizeMode = Sprite.SizeMode.CUSTOM✅ 添加调试日志Sprite.SizeMode 说明 模式  说明  尺寸来源  TRIMMED  裁剪模式  图片原始尺寸（忽略 ContentSize）  RAW  原始模式  图片完整尺寸  CUSTOM  自定义模式  使用 UITransform.ContentSize ✅ 现在的效果运行游戏后：远程图片会被缩放到 400x250 的尺寸不会超出设定的 ContentSize控制台会输出：已加载图片 MD_ad_img, SizeMode: CUSTOM建议如果需要保持图片宽高比，可以考虑：使用 Widget 组件来居中和约束或者在预制体中直接将 SizeMode 设置为 CUSTOM（这样代码中就不需要再设置了）现在测试一下，图片应该会正确显示在 400x250 的区域内了！字体这怎么设置左边位置固定，向右边扩大？字体这怎么设置左边位置固定，向右边扩大？看图片，你需要让文本从左边固定位置开始，向右扩展。这需要修改 AnchorPoint（锚点）。解决方案当前设置：AnchorPoint: (0.5, 0.5) - 中心锚点Position: (45, -110, 0)这会导致文本以中心点定位，文字变长时会向两边扩展。修改为左对齐扩展：需要将 AnchorPoint X 改为 0（左边锚点），这样：左边位置固定在 X=45文字向右扩展具体设置：plaintextAnchorPoint: (0, 0.5)  ← X改为0，Y保持0.5（垂直居中）这样文本就会：✅ 左边固定在 X=45 的位置✅ 随着文字增多向右扩展✅ 垂直方向保持居中HorizontalAlign 也要设置从图片看到 HorizontalAlign 是居中对齐（中间按钮被选中）。如果想要文字左对齐，还需要：点击 HorizontalAlign 的左边按钮（左对齐）这样文字会从左边开始排列完整配置plaintextAnchorPoint: X=0, Y=0.5
+HorizontalAlign: LEFT (左对齐按钮)
+Position: X=45 (左边界位置)这样文本就会完美地从左边固定位置向右扩展了！​prefabload.ts 91-104​ switch用法没问题吧，介绍一下switchcacs​prefabload.ts 91-104​ switch用法没问题吧，介绍一下switchcacs你的 switch 用法有一个小问题！让我详细解释一下：当前代码的问题typescriptgoWeb(type: any) {
+    if (this.adData && this.adData.appDetailUrl)
+        switch (type) {
+            case 1:
+                window.qg.openDeeplink({ uri: this.adData.appDetailUrl })
+                break;
+            case 2:
+                window.qg.openDeeplink({ uri: this.adData.permissionUrl })
+                break;
+            case 3:
+                window.qg.openDeeplink({ uri: this.adData.privacyUrl })
+                break;
+        }
+}问题分析：条件判断不完整：if (this.adData && this.adData.appDetailUrl) 只检查了 appDetailUrl但 case 2 和 case 3 使用的是 permissionUrl 和 privacyUrl如果这两个属性不存在，会传递 undefined 给 openDeeplinkSwitch 语法详解基本结构：typescriptswitch (表达式) {
+    case 值1:
+        // 代码块1
+        break;  // 中断，跳出 switch
+    case 值2:
+        // 代码块2
+        break;
+    case 值3:
+        // 代码块3
+        break;
+    default:  // 可选：当所有 case 都不匹配时执行
+        // 默认代码块
+        break;
+}关键点：break 很重要：如果不写 break，会继续执行下一个 case（称为"fall-through"）这是一个常见的陷阱！default 分支：可选的，用于处理未匹配的情况推荐加上，提高代码健壮性改进建议typescriptgoWeb(type: number) {  // 改用 number 类型更明确
+    if (!this.adData) {
+        console.error("广告数据不存在");
+        return;
+    }
+
+    let uri: string | undefined;
+    
+    switch (type) {
+        case 1:
+            uri = this.adData.appDetailUrl;
+            break;
+        case 2:
+            uri = this.adData.permissionUrl;
+            break;
+        case 3:
+            uri = this.adData.privacyUrl;
+            break;
+        default:
+            console.error(`未知的链接类型: ${type}`);
+            return;
+    }
+
+    if (uri) {
+        window.qg.openDeeplink({ uri });
+    } else {
+        console.error(`链接地址不存在，类型: ${type}`);
+    }
+}改进点：✅ 类型声明：type: number 更明确✅ 统一检查：先检查 this.adData，再检查具体的 uri✅ default 分支：处理未知类型✅ 安全调用：确保 uri 存在才调用 openDeeplink✅ 错误日志：便于调试Switch 的 Fall-Through 示例typescript// 危险示例：没有 break
+switch (type) {
+    case 1:
+        console.log("case 1");
+        // 没有 break！会继续执行 case 2
+    case 2:
+        console.log("case 2");
+        // 没有 break！会继续执行 case 3
+    case 3:
+        console.log("case 3");
+}
+
+// 如果 type = 1，会输出：
+// case 1
+// case 2
+// case 3实用场景：多个 case 共享代码typescriptswitch (type) {
+    case 1:
+    case 2:
+    case 3:
+        // 1、2、3 都执行这里
+        console.log("1-3 都会执行");
+        break;
+    case 4:
+    case 5:
+        // 4、5 执行这里
+        console.log("4-5 执行");
+        break;
+    default:
+        console.log("其他");
+}你的代码逻辑是对的，只是建议加上更完善的错误处理和类型检查！为什么控制台打印出来的是nan？为什么控制台打印出来的是nan？看图片！问题找到了！问题原因你传入的参数是 "1"（字符串），而 Number("1") 应该能正确转换为数字 1。但是，从图片看到 CustomEventData 的值是 "1"，这说明事件传递的数据本身可能有问题。让我分析一下可能的原因：1. 传入的不是字符串 "1"，而是其他不可转换的值Number(type) 返回 NaN 说明 type 的值无法转换为数字。可能的情况：typescriptNumber("1")      // ✅ 1
+Number(1)        // ✅ 1
+Number("abc")    // ❌ NaN
+Number(undefined) // ❌ NaN
+Number(null)     // ✅ 0
+Number("")       // ✅ 0
+Number("  ")     // ✅ 0
+Number({})       // ❌ NaN
+Number([])       // ✅ 0
+Number([1])      // ✅ 12. 检查传入的原始值在转换之前先打印原始值：typescriptgoWeb(type: any) {
+    if (!this.adData) return;
+    
+    console.log("原始 type:", type, "类型:", typeof type);
+    console.log("type 的值:", JSON.stringify(type));
+    
+    type = Number(type);
+    console.log("转换后 type:", type);
+    
+    // ... 后续代码
+}3. 可能是事件绑定的问题从图片看，这是在 Cocos Creator 编辑器中绑定的事件。检查一下：CustomEventData 字段中填的是什么？是否多了空格或特殊字符？尝试改用数字 1 而不是字符串 "1"调试建议方法 1：详细日志typescriptgoWeb(type: any) {
+    if (!this.adData) return;
+    
+    console.log("====== 调试信息 ======");
+    console.log("type 原始值:", type);
+    console.log("type 类型:", typeof type);
+    console.log("type 长度:", type?.length);
+    console.log("type charCode:", type?.charCodeAt?.(0));
+    console.log("JSON:", JSON.stringify(type));
+    
+    const numType = Number(type);
+    console.log("转换结果:", numType);
+    console.log("是否 NaN:", isNaN(numType));
+    
+    if (isNaN(numType)) {
+        console.error("❌ type 转换失败，无法转为数字");
+        return;
+    }
+    
+    switch (numType) {
+        // ...
+    }
+}方法 2：使用 parseInttypescripttype = parseInt(type, 10);  // 10 是基数，表示十进制方法 3：类型保护typescriptgoWeb(type: any) {
+    if (!this.adData) return;
+    
+    // 清理并转换
+    let numType: number;
+    if (typeof type === 'number') {
+        numType = type;
+    } else if (typeof type === 'string') {
+        numType = parseInt(type.trim(), 10);  // 去除空格
+    } else {
+        console.error("无效的 type 参数:", type);
+        return;
+    }
+    
+    if (isNaN(numType)) {
+        console.error("type 转换为 NaN:", type);
+        return;
+    }
+    
+    console.log("最终 type:", numType);
+    
+    switch (numType) {
+        // ...
+    }
+}快速排查在编辑器中，检查 CustomEventData 是否真的是 1，有没有看不见的空格或换行清空 CustomEventData，重新输入 1或者直接填数字 1 而不是字符串 "1"先加上详细日志看看 type 到底是什么值，然后我们再进一步解决！console.log(JSON.stringify(event))      为什么使用了这个就不打印后面的数据？console.log(JSON.stringify(event))      为什么使用了这个就不打印后面的数据？JSON.stringify(event) 出错导致后续代码无法执行！问题原因Cocos Creator 的 Event 对象包含循环引用，JSON.stringify() 无法序列化循环引用的对象，会抛出错误：plaintextTypeError: Converting circular structure to JSON这个错误会中断函数执行，所以后面的 console.log 都不会执行。Event 对象的特点Cocos Creator 的事件对象包含：target (事件目标节点)currentTarget (当前处理节点)这些节点又包含父节点、子节点等，形成循环引用解决方案方法 1：只打印需要的属性（推荐）typescriptgoWeb(event: any) {
+    console.log("====== Event 信息 ======");
+    console.log("事件类型:", event.type);
+    console.log("CustomEventData:", event.detail);
+    console.log("target:", event.target?.name);
+    console.log("currentTarget:", event.currentTarget?.name);
+    
+    const dataStr = event.detail; 
+    console.log("原始数据:", dataStr);
+    
+    const dataNum = Number(dataStr); 
+    console.log("转换后数字:", dataNum);
+    
+    if (isNaN(dataNum)) {
+        console.error("❌ 转换失败，dataStr:", dataStr);
+        return;
+    }
+    
+    switch (dataNum) {
+        // ...
+    }
+}方法 2：使用 try-catch 捕获错误typescriptgoWeb(event: any) {
+    // 尝试序列化，但不中断执行
+    try {
+        console.log("Event JSON:", JSON.stringify(event));
+    } catch (e) {
+        console.log("Event 无法序列化（正常，包含循环引用）");
+        console.log("Event 对象:", event);
+    }
+    
+    const dataStr = event.detail; 
+    console.log("原始数据:", dataStr);
+    // ...
+}方法 3：自定义序列化函数typescriptgoWeb(event: any) {
+    // 只序列化特定属性
+    const safeEvent = {
+        type: event.type,
+        detail: event.detail,
+        targetName: event.target?.name,
+        currentTargetName: event.currentTarget?.name
+    };
+    
+    console.log("Event 信息:", JSON.stringify(safeEvent));
+    
+    const dataStr = event.detail; 
+    // ...
+}方法 4：使用 Cocos 的日志函数typescriptgoWeb(event: any) {
+    console.log("Event 对象:", event);  // 浏览器会自动处理循环引用
+    
+    const dataStr = event.detail; 
+    console.log("CustomEventData:", dataStr);
+    // ...
+}推荐最终代码typescriptgoWeb(event: any) {
+    console.log("====== 点击事件触发 ======");
+    console.log("CustomEventData:", event.detail);
+    
+    if (!this.adData) {
+        console.error("广告数据不存在");
+        return;
+    }
+    
+    const dataStr = event.detail; 
+    console.log("1. 原始数据:", dataStr, "类型:", typeof dataStr);
+    
+    const dataNum = Number(dataStr); 
+    console.log("2. 转换结果:", dataNum, "是否NaN:", isNaN(dataNum));
+    
+    if (isNaN(dataNum)) {
+        console.error("❌ 无法转换为数字");
+        return;
+    }
+    
+    console.log("3. 执行 switch，dataNum =", dataNum);
+    
+    switch (dataNum) {
+        case 1:
+            console.log("→ case 1: appDetailUrl");
+            if (!this.adData.appDetailUrl) {
+                console.error("appDetailUrl 不存在");
+                return;
+            }
+            window.qg.openDeeplink({ uri: this.adData.appDetailUrl });
+            break;
+        case 2:
+            console.log("→ case 2: permissionUrl");
+            if (!this.adData.permissionUrl) {
+                console.error("permissionUrl 不存在");
+                return;
+            }
+            window.qg.openDeeplink({ uri: this.adData.permissionUrl });
+            break;
+        case 3:
+            console.log("→ case 3: privacyUrl");
+            if (!this.adData.privacyUrl) {
+                console.error("privacyUrl 不存在");
+                return;
+            }
+            window.qg.openDeeplink({ uri: this.adData.privacyUrl });
+            break;
+        default:
+            console.error("❌ 未知的类型:", dataNum);
+            break;
+    }
+}总结❌ 不要用 JSON.stringify(event)，会导致循环引用错误✅ 直接用 console.log(event)，浏览器会智能处理✅ 只打印需要的属性，如 event.detail✅ 加 try-catch 捕获潜在错误现在应该能正常打印日志了！找到问题了！CustomEventData: undefined 和 原始数据: undefined！问题根源你在编辑器中绑定事件时，CustomEventData 字段是空的，所以：event.detail 是 undefinedNumber(undefined) 返回 NaN解决方案在 Cocos Creator 编辑器中设置选中触发事件的节点（比如按钮）找到 Button 或点击事件组件在 ClickEvents 列表中，找到你绑定的 goWeb 事件在 CustomEventData 字段中填入数字，例如：填 1 或 "1"（详情按钮）填 2 或 "2"（权限按钮）填 3 或 "3"（隐私按钮）代码中添加保护虽然应该在编辑器中设置，但代码也要加防御：typescriptgoWeb(event: any) {
+    console.log("====== Event 信息 ======");
+    console.log("事件类型:", event.type);
+    console.log("CustomEventData:", event.detail);
+    console.log("target:", event.target?.name);
+    console.log("currentTarget:", event.currentTarget?.name);
+    
+    if (!this.adData) {
+        console.error("❌ 广告数据不存在");
+        return;
+    }
+    
+    const dataStr = event.detail;
+    console.log("原始数据:", dataStr);
+    
+    // 检查 CustomEventData 是否存在
+    if (dataStr === undefined || dataStr === null || dataStr === '') {
+        console.error("❌ CustomEventData 未设置！请在编辑器中设置事件参数");
+        return;
+    }
+    
+    const dataNum = Number(dataStr);
+    console.log("转换后数字:", dataNum);
+    
+    if (isNaN(dataNum)) {
+        console.error("❌ CustomEventData 无法转换为数字:", dataStr);
+        return;
+    }
+    
+    console.log("执行 switch，type =", dataNum);
+    
+    switch (dataNum) {
+        case 1:
+            console.log("→ 打开应用详情");
+            if (!this.adData.appDetailUrl) {
+                console.error("appDetailUrl 不存在");
+                return;
+            }
+            window.qg.openDeeplink({ uri: this.adData.appDetailUrl });
+            break;
+        case 2:
+            console.log("→ 打开权限说明");
+            if (!this.adData.permissionUrl) {
+                console.error("permissionUrl 不存在");
+                return;
+            }
+            window.qg.openDeeplink({ uri: this.adData.permissionUrl });
+            break;
+        case 3:
+            console.log("→ 打开隐私政策");
+            if (!this.adData.privacyUrl) {
+                console.error("privacyUrl 不存在");
+                return;
+            }
+            window.qg.openDeeplink({ uri: this.adData.privacyUrl });
+            break;
+        default:
+            console.error("❌ 未知的链接类型:", dataNum);
+            break;
+    }
+}编辑器设置示例假设你有三个按钮：按钮1 - 查看详情plaintextComponent: cc.Button
+ClickEvents:
+  - Target: NvAd-md (或包含 Prefabload 组件的节点)
+  - Component: Prefabload
+  - Handler: goWeb
+  - CustomEventData: 1  ← 填这里！按钮2 - 权限说明plaintextCustomEventData: 2按钮3 - 隐私政策plaintextCustomEventData: 3快速检查清单✅ 1. 编辑器中是否填写了 CustomEventData？
+✅ 2. 填的值是否正确（1、2、3）？
+✅ 3. 事件绑定的组件是否正确？
+✅ 4. Handler 名称是否是 goWeb？设置好 CustomEventData 后，日志应该会显示：plaintextCustomEventData: 1
+原始数据: 1
+转换后数字: 1
+→ 打开应用详情目前只能实现单例传值吧，我希望拷贝对象，然后对里面的事件，属性等，全部动态传值，可以实现多例复用目前只能实现单例传值吧，我希望拷贝对象，然后对里面的事件，属性等，全部动态传值，可以实现多例复用深度思考 · 39s用户想要实现一个可复用的广告组件，能够动态传值，而不是在编辑器中固定绑定事件参数。这是一个很好的需求 - 将预制体实例化后，通过代码动态设置事件和属性。在 Cocos Creator 中，可以通过以下方式实现：通过代码动态绑定事件，而不是在编辑器中绑定使用初始化方法传入配置数据在组件内部根据配置动态设置行为让我帮用户设计一个可复用的方案。很好的想法！你想要工厂模式 + 动态配置，让预制体可以被多次实例化，每次传入不同的数据和事件配置。设计方案1. 改造 Prefabload 组件 - 支持动态初始化typescriptimport { _decorator, Component, Node, Sprite, Label, assetManager, Texture2D, SpriteFrame, ImageAsset, Button } from 'cc';
+const { ccclass, property } = _decorator;
+
+// 广告配置接口
+interface AdConfig {
+    title?: string;
+    desc?: string;
+    source?: string;
+    imgUrl?: string;
+    iconUrl?: string;
+    appDetailUrl?: string;
+    permissionUrl?: string;
+    privacyUrl?: string;
+    onClose?: () => void;  // 关闭回调
+    onClick?: () => void;  // 点击回调
+}
+
+@ccclass('Prefabload')
+export class Prefabload extends Component {
+
+    @property(Sprite)
+    MD_ad: Sprite = null!;
+    @property(Sprite)
+    MD_ad_img: Sprite = null!;
+    @property(Label)
+    MD_ad_title: Label = null!;
+    @property(Sprite)
+    MD_ad_icon: Sprite = null!;
+    @property(Label)
+    MD_ad_desc: Label = null!;
+    @property(Label)
+    MD_ad_source: Label = null!;
+    
+    // 动态绑定按钮（可选）
+    @property(Node)
+    btnDetail: Node = null!;
+    @property(Node)
+    btnPermission: Node = null!;
+    @property(Node)
+    btnPrivacy: Node = null!;
+    @property(Node)
+    btnClose: Node = null!;
+
+    // 存储当前实例的配置
+    private _config: AdConfig = null!;
+    private _onCloseCallback: () => void = null!;
+    private _onClickCallback: () => void = null!;
+
+    /**
+     * 动态初始化广告组件（核心方法）
+     * @param config 广告配置
+     */
+    public init(config: AdConfig) {
+        this._config = config;
+        this._onCloseCallback = config.onClose;
+        this._onClickCallback = config.onClick;
+        
+        // 设置文本
+        if (config.title && this.MD_ad_title) {
+            this.MD_ad_title.string = config.title;
+        }
+        if (config.desc && this.MD_ad_desc) {
+            this.MD_ad_desc.string = config.desc;
+        }
+        if (config.source && this.MD_ad_source) {
+            this.MD_ad_source.string = config.source;
+        }
+        
+        // 加载图片
+        if (config.imgUrl) {
+            this.loadImg(config.imgUrl, this.MD_ad_img);
+        }
+        if (config.iconUrl) {
+            this.loadImg(config.iconUrl, this.MD_ad_icon);
+        }
+        
+        // 动态绑定按钮事件
+        this.bindEvents();
+        
+        console.log("广告组件初始化完成:", config.title);
+    }
+
+    /**
+     * 动态绑定按钮事件
+     */
+    private bindEvents() {
+        // 详情按钮
+        if (this.btnDetail) {
+            this.btnDetail.off(Node.EventType.TOUCH_END);  // 先移除旧事件
+            this.btnDetail.on(Node.EventType.TOUCH_END, () => {
+                this.openUrl(this._config?.appDetailUrl);
+                this._onClickCallback?.();
+            }, this);
+        }
+        
+        // 权限按钮
+        if (this.btnPermission) {
+            this.btnPermission.off(Node.EventType.TOUCH_END);
+            this.btnPermission.on(Node.EventType.TOUCH_END, () => {
+                this.openUrl(this._config?.permissionUrl);
+            }, this);
+        }
+        
+        // 隐私按钮
+        if (this.btnPrivacy) {
+            this.btnPrivacy.off(Node.EventType.TOUCH_END);
+            this.btnPrivacy.on(Node.EventType.TOUCH_END, () => {
+                this.openUrl(this._config?.privacyUrl);
+            }, this);
+        }
+        
+        // 关闭按钮
+        if (this.btnClose) {
+            this.btnClose.off(Node.EventType.TOUCH_END);
+            this.btnClose.on(Node.EventType.TOUCH_END, () => {
+                this.close();
+            }, this);
+        }
+    }
+
+    /**
+     * 打开链接
+     */
+    private openUrl(url: string | undefined) {
+        if (!url) {
+            console.warn("链接地址不存在");
+            return;
+        }
+        console.log("打开链接:", url);
+        
+        if (window.qg?.openDeeplink) {
+            window.qg.openDeeplink({ uri: url });
+        } else {
+            // Web 环境
+            window.open(url, '_blank');
+        }
+    }
+
+    /**
+     * 加载远程图片
+     */
+    private loadImg(url: string, sprite: Sprite) {
+        if (!url || !sprite) return;
+        
+        assetManager.loadRemote<ImageAsset>(url, (err, image) => {
+            if (!err && image && sprite.isValid) {
+                const texture = new Texture2D();
+                texture.image = image;
+                const spriteFrame = new SpriteFrame();
+                spriteFrame.texture = texture;
+                sprite.spriteFrame = spriteFrame;
+                sprite.sizeMode = Sprite.SizeMode.CUSTOM;  // 使用 ContentSize
+            }
+        });
+    }
+
+    /**
+     * 关闭广告
+     */
+    public close() {
+        console.log("关闭广告");
+        this._onCloseCallback?.();
+        this.node.active = false;
+        // 或者销毁节点: this.node.destroy();
+    }
+
+    /**
+     * 销毁时清理
+     */
+    onDestroy() {
+        this._config = null!;
+        this._onCloseCallback = null!;
+        this._onClickCallback = null!;
+    }
+}2. 广告管理器 - 工厂模式创建多实例typescriptimport { _decorator, Component, Node, Prefab, instantiate, find, Layers } from 'cc';
+import { Prefabload } from './prefabload';
+
+const { ccclass, property } = _decorator;
+
+@ccclass('AdManager')
+export class AdManager extends Component {
+
+    @property(Prefab)
+    adPrefab: Prefab = null!;
+
+    private static _instance: AdManager;
+    public static get instance(): AdManager {
+        return this._instance;
+    }
+
+    onLoad() {
+        AdManager._instance = this;
+    }
+
+    /**
+     * 创建广告实例（多例复用）
+     * @param adData 广告数据
+     * @param options 额外选项
+     */
+    public createAd(adData: any, options?: {
+        parent?: Node;
+        position?: { x: number; y: number };
+        onClose?: () => void;
+        onClick?: () => void;
+    }): Node | null {
+        if (!this.adPrefab) {
+            console.error("广告预制体未设置");
+            return null;
+        }
+
+        // 实例化预制体
+        const adNode = instantiate(this.adPrefab);
+        
+        // 设置父节点
+        const parent = options?.parent || find("Canvas");
+        if (parent) {
+            parent.addChild(adNode);
+        }
+        
+        // 设置 Layer
+        this.setLayerRecursively(adNode, Layers.Enum.UI_2D);
+        
+        // 设置位置
+        if (options?.position) {
+            adNode.setPosition(options.position.x, options.position.y, 0);
+        } else {
+            adNode.setPosition(0, 0, 0);
+        }
+        
+        // 设置层级
+        adNode.setSiblingIndex(9999);
+        
+        // 获取组件并初始化
+        const adComponent = adNode.getComponent(Prefabload);
+        if (adComponent) {
+            adComponent.init({
+                title: adData.title,
+                desc: adData.desc,
+                source: adData.source,
+                imgUrl: adData.imgUrlList?.[0],
+                iconUrl: adData.icon,
+                appDetailUrl: adData.appDetailUrl,
+                permissionUrl: adData.permissionUrl,
+                privacyUrl: adData.privacyUrl,
+                onClose: options?.onClose,
+                onClick: options?.onClick
+            });
+        }
+        
+        console.log("创建广告实例成功:", adNode.name);
+        return adNode;
+    }
+
+    /**
+     * 从 window 全局数据创建广告
+     */
+    public createAdFromGlobal(options?: {
+        parent?: Node;
+        position?: { x: number; y: number };
+        onClose?: () => void;
+        onClick?: () => void;
+    }): Node | null {
+        const adData = window['NativeAdData'];
+        if (!adData) {
+            console.error("全局广告数据不存在");
+            return null;
+        }
+        return this.createAd(adData, options);
+    }
+
+    /**
+     * 递归设置 Layer
+     */
+    private setLayerRecursively(node: Node, layer: number) {
+        node.layer = layer;
+        node.children.forEach(child => this.setLayerRecursively(child, layer));
+    }
+}3. 使用示例 - 创建多个广告实例typescript// 在 mainCanvas.ts 或其他地方使用
+
+// 示例1：创建单个广告
+const ad1 = AdManager.instance.createAd(window['NativeAdData'], {
+    position: { x: 0, y: 100 },
+    onClose: () => {
+        console.log("广告1被关闭");
+    },
+    onClick: () => {
+        console.log("广告1被点击");
+    }
+});
+
+// 示例2：创建多个不同位置的广告
+const adDataList = [
+    { title: "广告1", imgUrlList: ["url1"], appDetailUrl: "app://1" },
+    { title: "广告2", imgUrlList: ["url2"], appDetailUrl: "app://2" },
+    { title: "广告3", imgUrlList: ["url3"], appDetailUrl: "app://3" }
+];
+
+adDataList.forEach((data, index) => {
+    AdManager.instance.createAd(data, {
+        position: { x: 0, y: 200 - index * 150 },
+        onClose: () => console.log(`广告${index + 1}关闭`),
+        onClick: () => console.log(`广告${index + 1}点击`)
+    });
+});
+
+// 示例3：动态创建并稍后销毁
+const tempAd = AdManager.instance.createAdFromGlobal({
+    onClose: () => {
+        // 3秒后销毁节点
+        setTimeout(() => {
+            tempAd?.destroy();
+        }, 3000);
+    }
+});架构对比 特性  单例（当前）  多例（改造后）  实例数量  1个  无限  数据来源  window['NativeAdData']  动态传入  事件绑定  编辑器固定绑定  代码动态绑定  位置设置  固定  动态配置  回调函数  无  支持自定义回调  复用性  ❌ 低  ✅ 高 总结这种设计的优势：✅ 工厂模式：AdManager.createAd() 可创建多个实例✅ 动态配置：通过 init() 方法传入数据✅ 事件代码绑定：不依赖编辑器的 CustomEventData✅ 回调支持：onClose、onClick 等自定义回调✅ 完全解耦：预制体和业务逻辑分离需要我帮你完成具体的代码文件修改吗？window['NativeAdData'],广告存储在window上的一个对象上，最好加锁，一个广告实例用一次，每次拷贝一份用于实例化预制体window['NativeAdData'],广告存储在window上的一个对象上，最好加锁，一个广告实例用一次，每次拷贝一份用于实例化预制体深度思考 · 47s用户想要一个更安全的广告数据管理机制：广告数据存储在 window['NativeAdData'] 上需要加锁机制，防止数据被多次使用或污染每次实例化预制体时，拷贝一份数据，不影响原始数据一个广告数据只能用一次（或者用完后标记为已使用）这是一个典型的数据池/队列管理模式，需要：深拷贝机制使用锁/标记数据消费后的处理让我设计一个完整的广告数据管理器。很好的想法！需要实现广告数据池 + 深拷贝 + 锁机制，确保数据安全和一次性消费。广告数据管理器设计typescript/**
+ * 广告数据管理器
+ * - 深拷贝机制：每次获取数据都是独立副本
+ * - 锁机制：防止同一数据被多次消费
+ * - 队列管理：支持多个广告数据排队
+ */
+
+interface AdData {
+    adId?: string;           // 广告唯一ID
+    title?: string;
+    desc?: string;
+    source?: string;
+    imgUrlList?: string[];
+    icon?: string;
+    appDetailUrl?: string;
+    permissionUrl?: string;
+    privacyUrl?: string;
+    [key: string]: any;      // 其他扩展字段
+}
+
+interface AdDataWrapper {
+    data: AdData;
+    used: boolean;           // 是否已使用
+    locked: boolean;         // 是否被锁定（正在使用中）
+    timestamp: number;       // 添加时间
+    instanceId?: string;     // 使用该数据的实例ID
+}
+
+class AdDataManager {
+    private static _instance: AdDataManager;
+    
+    // 广告数据池
+    private _dataPool: Map<string, AdDataWrapper> = new Map();
+    
+    // 自增ID
+    private _idCounter: number = 0;
+    
+    public static get instance(): AdDataManager {
+        if (!this._instance) {
+            this._instance = new AdDataManager();
+        }
+        return this._instance;
+    }
+
+    private constructor() {
+        // 监听全局广告数据变化
+        this._watchGlobalData();
+    }
+
+    /**
+     * 监听 window['NativeAdData'] 变化
+     */
+    private _watchGlobalData() {
+        // 定期检查全局数据（因为可能是异步加载的）
+        const checkInterval = setInterval(() => {
+            if (window['NativeAdData']) {
+                this.addFromGlobal();
+            }
+        }, 500);
+        
+        // 10秒后停止检查
+        setTimeout(() => clearInterval(checkInterval), 10000);
+    }
+
+    /**
+     * 从全局变量添加广告数据到池中
+     */
+    public addFromGlobal(): string | null {
+        const globalData = window['NativeAdData'];
+        if (!globalData) {
+            console.warn("[AdDataManager] 全局广告数据不存在");
+            return null;
+        }
+        
+        // 深拷贝并添加到池中
+        const id = this.add(globalData);
+        
+        // 清空全局变量，防止重复添加
+        window['NativeAdData'] = null;
+        
+        console.log("[AdDataManager] 已从全局添加广告数据, ID:", id);
+        return id;
+    }
+
+    /**
+     * 添加广告数据到池中
+     * @param data 广告原始数据
+     * @returns 数据ID
+     */
+    public add(data: AdData): string {
+        const id = this._generateId();
+        
+        // 深拷贝数据
+        const clonedData = this._deepClone(data);
+        
+        const wrapper: AdDataWrapper = {
+            data: clonedData,
+            used: false,
+            locked: false,
+            timestamp: Date.now()
+        };
+        
+        this._dataPool.set(id, wrapper);
+        console.log("[AdDataManager] 添加广告数据, ID:", id, "池中数量:", this._dataPool.size);
+        
+        return id;
+    }
+
+    /**
+     * 获取并锁定一个可用的广告数据（深拷贝）
+     * @param instanceId 实例标识，用于追踪
+     * @returns 深拷贝后的数据，如果没有可用数据返回 null
+     */
+    public acquire(instanceId?: string): { id: string; data: AdData } | null {
+        // 查找第一个未使用且未锁定的数据
+        for (const [id, wrapper] of this._dataPool) {
+            if (!wrapper.used && !wrapper.locked) {
+                // 加锁
+                wrapper.locked = true;
+                wrapper.instanceId = instanceId || `instance_${Date.now()}`;
+                
+                // 返回深拷贝的数据
+                const clonedData = this._deepClone(wrapper.data);
+                
+                console.log("[AdDataManager] 获取广告数据, ID:", id, "实例:", wrapper.instanceId);
+                return { id, data: clonedData };
+            }
+        }
+        
+        console.warn("[AdDataManager] 没有可用的广告数据");
+        return null;
+    }
+
+    /**
+     * 根据ID获取数据（深拷贝，不加锁）
+     */
+    public getById(id: string): AdData | null {
+        const wrapper = this._dataPool.get(id);
+        if (!wrapper) {
+            console.warn("[AdDataManager] 数据不存在, ID:", id);
+            return null;
+        }
+        return this._deepClone(wrapper.data);
+    }
+
+    /**
+     * 消费数据（标记为已使用，释放锁）
+     * @param id 数据ID
+     */
+    public consume(id: string): void {
+        const wrapper = this._dataPool.get(id);
+        if (wrapper) {
+            wrapper.used = true;
+            wrapper.locked = false;
+            console.log("[AdDataManager] 消费广告数据, ID:", id);
+        }
+    }
+
+    /**
+     * 释放锁（不标记为已使用，可重新获取）
+     * @param id 数据ID
+     */
+    public release(id: string): void {
+        const wrapper = this._dataPool.get(id);
+        if (wrapper) {
+            wrapper.locked = false;
+            wrapper.instanceId = undefined;
+            console.log("[AdDataManager] 释放广告数据锁, ID:", id);
+        }
+    }
+
+    /**
+     * 移除数据
+     * @param id 数据ID
+     */
+    public remove(id: string): void {
+        this._dataPool.delete(id);
+        console.log("[AdDataManager] 移除广告数据, ID:", id, "剩余:", this._dataPool.size);
+    }
+
+    /**
+     * 清理已使用的数据
+     */
+    public clearUsed(): void {
+        for (const [id, wrapper] of this._dataPool) {
+            if (wrapper.used) {
+                this._dataPool.delete(id);
+            }
+        }
+        console.log("[AdDataManager] 清理已使用数据, 剩余:", this._dataPool.size);
+    }
+
+    /**
+     * 清空所有数据
+     */
+    public clear(): void {
+        this._dataPool.clear();
+        console.log("[AdDataManager] 清空所有广告数据");
+    }
+
+    /**
+     * 获取可用数据数量
+     */
+    public getAvailableCount(): number {
+        let count = 0;
+        for (const wrapper of this._dataPool.values()) {
+            if (!wrapper.used && !wrapper.locked) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    /**
+     * 获取池中所有数据的状态
+     */
+    public getPoolStatus(): { id: string; used: boolean; locked: boolean; instanceId?: string }[] {
+        const status: { id: string; used: boolean; locked: boolean; instanceId?: string }[] = [];
+        for (const [id, wrapper] of this._dataPool) {
+            status.push({
+                id,
+                used: wrapper.used,
+                locked: wrapper.locked,
+                instanceId: wrapper.instanceId
+            });
+        }
+        return status;
+    }
+
+    /**
+     * 深拷贝对象
+     */
+    private _deepClone<T>(obj: T): T {
+        if (obj === null || typeof obj !== 'object') {
+            return obj;
+        }
+        
+        if (Array.isArray(obj)) {
+            return obj.map(item => this._deepClone(item)) as unknown as T;
+        }
+        
+        const cloned = {} as T;
+        for (const key in obj) {
+            if (Object.prototype.hasOwnProperty.call(obj, key)) {
+                cloned[key] = this._deepClone(obj[key]);
+            }
+        }
+        return cloned;
+    }
+
+    /**
+     * 生成唯一ID
+     */
+    private _generateId(): string {
+        return `ad_${++this._idCounter}_${Date.now()}`;
+    }
+}
+
+// 导出单例
+export const adDataManager = AdDataManager.instance;使用示例1. 在 loginCanvas.ts 中添加数据typescript// 原生广告加载回调中
+this.nativeAd.onLoad((result: any) => {
+    const adData = result.adList[0];
+    console.log("原生广告加载成功");
+    
+    // 方式1：直接添加到管理器
+    adDataManager.add(adData);
+    
+    // 方式2：仍然存到 window，让管理器自动获取
+    window['NativeAdData'] = adData;
+});2. 在 prefabload.ts 中使用typescriptimport { adDataManager } from './AdDataManager';
+
+@ccclass('Prefabload')
+export class Prefabload extends Component {
+    
+    private _adDataId: string | null = null;  // 当前使用的数据ID
+    private _adData: any = null;               // 深拷贝后的数据副本
+
+    onEnable() {
+        // 从数据池获取一份数据（深拷贝 + 加锁）
+        const result = adDataManager.acquire(this.node.uuid);
+        
+        if (result) {
+            this._adDataId = result.id;
+            this._adData = result.data;  // 这是深拷贝后的独立副本
+            
+            this.fillAdData(this._adData);
+            
+            // 标记为已消费（一次性使用）
+            adDataManager.consume(this._adDataId);
+        } else {
+            console.error("没有可用的广告数据");
+        }
+    }
+
+    private fillAdData(adData: any) {
+        if (!adData) return;
+
+        if (this.MD_ad_title && adData.title) {
+            this.MD_ad_title.string = adData.title;
+        }
+        if (adData.imgUrlList?.[0]) {
+            this.loadImg(adData.imgUrlList[0], this.MD_ad_img);
+        }
+        if (adData.icon) {
+            this.loadImg(adData.icon, this.MD_ad_icon);
+        }
+        if (this.MD_ad_source && adData.source) {
+            this.MD_ad_source.string = adData.source;
+        }
+    }
+
+    goWeb(type: number) {
+        if (!this._adData) {
+            console.error("广告数据不存在");
+            return;
+        }
+
+        let url: string | undefined;
+        
+        switch (type) {
+            case 1:
+                url = this._adData.appDetailUrl;
+                break;
+            case 2:
+                url = this._adData.permissionUrl;
+                break;
+            case 3:
+                url = this._adData.privacyUrl;
+                break;
+        }
+
+        if (url && window.qg?.openDeeplink) {
+            window.qg.openDeeplink({ uri: url });
+        }
+    }
+
+    ADclose() {
+        this.node.active = false;
+    }
+
+    onDestroy() {
+        // 清理引用
+        this._adData = null;
+        this._adDataId = null;
+    }
+}3. 创建多个广告实例typescript// 假设有3个广告数据
+adDataManager.add({ title: "广告1", appDetailUrl: "url1" });
+adDataManager.add({ title: "广告2", appDetailUrl: "url2" });
+adDataManager.add({ title: "广告3", appDetailUrl: "url3" });
+
+// 创建3个广告实例，每个使用独立的数据副本
+for (let i = 0; i < 3; i++) {
+    const adNode = instantiate(this.adPrefab);
+    canvas.addChild(adNode);
+    adNode.setPosition(0, 200 - i * 150, 0);
+    // onEnable 会自动从池中获取数据
+}
+
+// 检查状态
+console.log("剩余可用:", adDataManager.getAvailableCount());
+console.log("池状态:", adDataManager.getPoolStatus());流程图plaintext┌─────────────────────────────────────────────────────────────┐
+│                    广告数据生命周期                          │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│   原生SDK加载 ──→ window['NativeAdData'] ──→ 数据池         │
+│                         │                     │             │
+│                         └──→ add() 深拷贝 ───→┘             │
+│                                                             │
+│   ┌─────────────────────────────────────────────────────┐   │
+│   │                   数据池 (Map)                       │   │
+│   │  ┌─────┬──────┬────────┬───────────┐               │   │
+│   │  │ ID  │ used │ locked │ data      │               │   │
+│   │  ├─────┼──────┼────────┼───────────┤               │   │
+│   │  │ ad_1│ ✓    │ ✗      │ {深拷贝}  │  ← 已消费     │   │
+│   │  │ ad_2│ ✗    │ ✓      │ {深拷贝}  │  ← 使用中     │   │
+│   │  │ ad_3│ ✗    │ ✗      │ {深拷贝}  │  ← 可用       │   │
+│   │  └─────┴──────┴────────┴───────────┘               │   │
+│   └─────────────────────────────────────────────────────┘   │
+│                           │                                 │
+│                     acquire() 获取+加锁                     │
+│                           │                                 │
+│                           ↓                                 │
+│                    返回深拷贝副本                            │
+│                           │                                 │
+│                     实例化预制体                             │
+│                           │                                 │
+│                     consume() 标记已用                       │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘核心特点 特性  说明  深拷贝  每次获取都是独立副本，修改不影响原数据  锁机制  locked 防止同一数据被多个实例同时获取  一次性消费  used 标记确保数据只被使用一次  队列管理  支持多个广告数据排队等待使用  状态追踪  可查看每个数据的使用状态  自动清理  clearUsed() 清理已消费的数据 这样每个广告实例都有自己独立的数据副本，完全隔离，不会互相影响！工厂模式manage要挂在那个脚本上？工厂模式manage要挂在那个脚本上？深度思考 · 25s用户问工厂模式的 AdManager 管理器应该挂载在哪个脚本/节点上。根据项目结构，有几个选择：挂在 Canvas 上 - 因为广告是 UI 元素，挂在 Canvas 上比较合理挂在 mainCanvas 脚本所在的节点上 - 因为 mainCanvas 是主入口创建一个独立的管理节点 - 比如 "AdManager" 节点不挂载，使用纯静态单例 - 不需要继承 Component考虑到：AdManager 需要持有预制体引用（Prefab）需要在场景中持久存在需要访问 Canvas 添加子节点最佳方案是：简单方案：直接在 mainCanvas 或 Canvas 上添加规范方案：创建独立的 "AdManager" 节点挂载让我给出具体建议。根据项目结构，有几种挂载方式：方案对比 方案  挂载位置  优点  缺点  方案1  Canvas 节点  简单，直接访问UI层  职责混杂  方案2  独立 AdManager 节点  清晰分离，易维护  多一个节点  方案3  mainCanvas 组件  已有入口，改动少  耦合度高  方案4  纯静态类（不挂载）  无需节点，全局访问  无法引用预制体 推荐：方案2 - 独立节点（最规范）场景层级结构plaintextmain (Scene)
+├── core
+├── Canvas
+│   ├── panelRoot
+│   ├── loading
+│   ├── ...
+│   └── AdManager   ← 新建节点，挂载 AdManager 组件
+└── UICamera_Canvas创建步骤在 Cocos Creator 编辑器中：打开 main.scene在 Canvas 下右键 → 创建 → 空节点命名为 AdManager挂载组件：选中 AdManager 节点添加自定义组件 AdManager将广告预制体拖到 adPrefab 属性上文件位置根据项目结构，建议放在 framework 目录：plaintextassets/script/
+├── framework/
+│   ├── AdManager.ts      ← 广告管理器
+│   ├── AdDataManager.ts  ← 数据池管理器（纯静态，不需挂载）
+│   ├── uiManager.ts
+│   └── ...或者：方案4 - 纯静态类（最简单）如果不想创建新节点，可以改成纯静态类，通过代码加载预制体：typescript// AdManager.ts - 不继承 Component，无需挂载
+
+import { Prefab, Node, instantiate, find, Layers, resources } from 'cc';
+import { adDataManager } from './AdDataManager';
+
+export class AdManager {
+    private static _adPrefab: Prefab | null = null;
+
+    /**
+     * 初始化（加载预制体）
+     */
+    public static async init(): Promise<void> {
+        return new Promise((resolve, reject) => {
+            resources.load('prefab/ui/InitAd', Prefab, (err, prefab) => {
+                if (err) {
+                    console.error("[AdManager] 加载广告预制体失败:", err);
+                    reject(err);
+                    return;
+                }
+                this._adPrefab = prefab;
+                console.log("[AdManager] 初始化完成");
+                resolve();
+            });
+        });
+    }
+
+    /**
+     * 创建广告实例
+     */
+    public static createAd(options?: {
+        parent?: Node;
+        position?: { x: number; y: number };
+        onClose?: () => void;
+    }): Node | null {
+        if (!this._adPrefab) {
+            console.error("[AdManager] 预制体未加载，请先调用 init()");
+            return null;
+        }
+
+        // 获取广告数据
+        const result = adDataManager.acquire();
+        if (!result) {
+            console.error("[AdManager] 没有可用的广告数据");
+            return null;
+        }
+
+        // 实例化
+        const adNode = instantiate(this._adPrefab);
+        
+        // 添加到 Canvas
+        const parent = options?.parent || find("Canvas");
+        if (parent) {
+            parent.addChild(adNode);
+        }
+
+        // 设置 Layer
+        this.setLayerRecursively(adNode, Layers.Enum.UI_2D);
+
+        // 设置位置
+        const pos = options?.position || { x: 0, y: 0 };
+        adNode.setPosition(pos.x, pos.y, 0);
+        adNode.setSiblingIndex(9999);
+
+        // 消费数据
+        adDataManager.consume(result.id);
+
+        console.log("[AdManager] 创建广告成功");
+        return adNode;
+    }
+
+    private static setLayerRecursively(node: Node, layer: number) {
+        node.layer = layer;
+        node.children.forEach(child => this.setLayerRecursively(child, layer));
+    }
+}使用方式typescript// 在 mainCanvas.ts 的 start() 中初始化
+import { AdManager } from './framework/AdManager';
+
+async start() {
+    // 初始化广告管理器
+    await AdManager.init();
+    
+    // 创建广告
+    AdManager.createAd({
+        position: { x: 0, y: 100 }
+    });
+}总结建议 场景  推荐方案  正式项目，需要编辑器拖拽预制体  方案2：独立 AdManager 节点  快速开发，代码加载预制体  方案4：纯静态类  改动最小  方案3：集成到 mainCanvas 如果选择方案2，在 Canvas 下创建 AdManager 空节点并挂载组件即可。如果选择方案4，不需要挂载任何节点，直接在代码中调用 AdManager.init() 和 AdManager.createAd()。你倾向于哪种方式？就实现全局对象,设置对象存储数据，一个页面可以动态创建多个预制体广告，动态绑定事件，实现功能，越简单越好就实现全局对象,设置对象存储数据，一个页面可以动态创建多个预制体广告，动态绑定事件，实现功能，越简单越好深度思考 · 29s用户想要一个简单的解决方案：全局对象存储广告数据一个页面可以动态创建多个广告预制体动态绑定事件越简单越好让我设计一个最简单的方案，不需要太复杂的管理器。好的，最简单的方案！只需要两个文件：1. 全局广告数据管理（新建文件）文件路径: assets/script/framework/AdData.tstypescript/**
+ * 全局广告数据管理 - 极简版
+ */
+
+interface AdInfo {
+    data: any;
+    used: boolean;
+}
+
+class AdData {
+    private _pool: AdInfo[] = [];
+
+    /** 添加广告数据（自动深拷贝） */
+    add(data: any): number {
+        const copied = JSON.parse(JSON.stringify(data));
+        this._pool.push({ data: copied, used: false });
+        return this._pool.length - 1;
+    }
+
+    /** 获取一个未使用的数据（深拷贝） */
+    acquire(): any {
+        for (const item of this._pool) {
+            if (!item.used) {
+                item.used = true;
+                return JSON.parse(JSON.stringify(item.data));
+            }
+        }
+        return null;
+    }
+
+    /** 从全局 window 获取并添加 */
+    addFromWindow(): any {
+        if (window['NativeAdData']) {
+            const data = window['NativeAdData'];
+            window['NativeAdData'] = null;  // 清空防重复
+            this.add(data);
+            return data;
+        }
+        return null;
+    }
+
+    /** 获取可用数量 */
+    get available(): number {
+        return this._pool.filter(item => !item.used).length;
+    }
+
+    /** 清空 */
+    clear() {
+        this._pool = [];
+    }
+}
+
+export const adData = new AdData();2. 改造 prefabload.ts文件路径: assets/script/prefabload.tstypescriptimport { _decorator, Component, Node, Sprite, Label, assetManager, Texture2D, SpriteFrame, ImageAsset, Button } from 'cc';
+import { adData } from './framework/AdData';
+
+const { ccclass, property } = _decorator;
+
+@ccclass('Prefabload')
+export class Prefabload extends Component {
+
+    @property(Sprite)
+    MD_ad_img: Sprite = null!;
+    @property(Label)
+    MD_ad_title: Label = null!;
+    @property(Sprite)
+    MD_ad_icon: Sprite = null!;
+    @property(Label)
+    MD_ad_desc: Label = null!;
+    @property(Label)
+    MD_ad_source: Label = null!;
+
+    // 当前实例的数据（独立副本）
+    private _data: any = null;
+
+    /**
+     * 初始化方法 - 外部调用，传入数据
+     */
+    init(data?: any) {
+        // 优先使用传入的数据，否则从池中获取
+        this._data = data || adData.acquire();
+        
+        if (!this._data) {
+            console.error("没有可用的广告数据");
+            return;
+        }
+
+        this.fillData();
+        this.bindEvents();
+    }
+
+    /** 填充数据 */
+    private fillData() {
+        const d = this._data;
+        if (!d) return;
+
+        if (this.MD_ad_title) this.MD_ad_title.string = d.title || "";
+        if (this.MD_ad_source) this.MD_ad_source.string = d.source || "";
+        if (this.MD_ad_desc) this.MD_ad_desc.string = d.desc || "";
+        
+        if (d.imgUrlList?.[0]) this.loadImg(d.imgUrlList[0], this.MD_ad_img);
+        if (d.icon) this.loadImg(d.icon, this.MD_ad_icon);
+    }
+
+    /** 动态绑定事件 */
+    private bindEvents() {
+        // 绑定整个广告点击 - 打开详情
+        this.node.on(Node.EventType.TOUCH_END, () => {
+            this.openUrl(this._data?.appDetailUrl);
+        }, this);
+    }
+
+    /** 打开链接 */
+    openUrl(url?: string) {
+        if (!url) return;
+        console.log("打开链接:", url);
+        window.qg?.openDeeplink?.({ uri: url });
+    }
+
+    /** 加载远程图片 */
+    private loadImg(url: string, sprite: Sprite) {
+        if (!url || !sprite) return;
+        assetManager.loadRemote<ImageAsset>(url, (err, image) => {
+            if (!err && sprite.isValid) {
+                const texture = new Texture2D();
+                texture.image = image;
+                const spriteFrame = new SpriteFrame();
+                spriteFrame.texture = texture;
+                sprite.spriteFrame = spriteFrame;
+                sprite.sizeMode = Sprite.SizeMode.CUSTOM;
+            }
+        });
+    }
+
+    /** 关闭广告 */
+    close() {
+        this.node.destroy();
+    }
+
+    /** 打开权限页 */
+    openPermission() {
+        this.openUrl(this._data?.permissionUrl);
+    }
+
+    /** 打开隐私页 */
+    openPrivacy() {
+        this.openUrl(this._data?.privacyUrl);
+    }
+}3. 使用示例（在 mainCanvas.ts 中）typescriptimport { adData } from './framework/AdData';
+import { Prefabload } from './prefabload';
+
+// ========== 添加数据 ==========
+
+// 方式1: 从 window 获取
+adData.addFromWindow();
+
+// 方式2: 直接添加
+adData.add({ 
+    title: "测试广告", 
+    imgUrlList: ["http://..."],
+    appDetailUrl: "app://..." 
+});
+
+// ========== 创建广告实例 ==========
+
+// 创建一个广告
+const ad1 = instantiate(this.adPrefab);
+find("Canvas").addChild(ad1);
+ad1.getComponent(Prefabload)?.init();  // 自动从池中获取数据
+
+// 创建另一个广告（传入自定义数据）
+const ad2 = instantiate(this.adPrefab);
+find("Canvas").addChild(ad2);
+ad2.setPosition(0, -200, 0);
+ad2.getComponent(Prefabload)?.init({
+    title: "自定义广告",
+    imgUrlList: ["http://custom.jpg"],
+    appDetailUrl: "app://custom"
+});
+
+// 批量创建
+for (let i = 0; i < 3; i++) {
+    const ad = instantiate(this.adPrefab);
+    find("Canvas").addChild(ad);
+    ad.setPosition(0, 100 - i * 150, 0);
+    ad.getComponent(Prefabload)?.init();
+}核心流程plaintext┌──────────────────────────────────────────────────┐
+│                   使用流程                        │
+├──────────────────────────────────────────────────┤
+│                                                  │
+│  1. 添加数据                                      │
+│     adData.add(data)                             │
+│     adData.addFromWindow()                       │
+│                                                  │
+│  2. 实例化预制体                                  │
+│     const ad = instantiate(prefab)               │
+│     canvas.addChild(ad)                          │
+│                                                  │
+│  3. 初始化组件                                    │
+│     ad.getComponent(Prefabload).init()           │
+│     ↓                                            │
+│     自动获取数据（深拷贝）                         │
+│     自动填充UI                                    │
+│     自动绑定事件                                  │
+│                                                  │
+│  4. 完成！每个实例数据独立                         │
+│                                                  │
+└──────────────────────────────────────────────────┘特点 特性  实现  深拷贝  JSON.parse(JSON.stringify())  自动获取  init() 自动从池中取数据  手动指定  init(customData) 传入自定义数据  事件绑定  bindEvents() 代码动态绑定  一次消费  used 标记，同一数据不重复使用 只需要这两个文件，就能实现多实例广告的动态创建！assets/script/framework/AdData.ts这个ts可以不用挂在脚本上，直接引用吗？assets/script/framework/AdData.ts这个ts可以不用挂在脚本上，直接引用吗？深度思考 · 11s用户问的是 AdData.ts 是否可以不挂载到任何节点上，直接通过 import 引用使用。答案是：是的，完全可以！因为 AdData.ts：没有继承 Component是一个纯 TypeScript 类导出的是一个单例对象 adData不依赖任何 Cocos Creator 的生命周期这种模式叫做"纯数据类"或"工具类"，在 Cocos Creator 中很常见，比如：配置管理数据存储工具函数事件总线只需要 import 就能直接使用，不需要挂载到任何节点上。是的，完全可以！ 不需要挂载到任何节点上。原因AdData.ts 是一个纯 TypeScript 类，不是 Cocos 组件：typescript// ✅ 普通类 - 不需要挂载
+class AdData {
+    // ...
+}
+export const adData = new AdData();
+
+// ❌ 组件类 - 需要挂载到节点
+@ccclass('XXX')
+export class XXX extends Component {
+    // ...
+}区别 类型  继承  需要挂载  使用方式  纯类/工具类  无  ❌ 不需要  import 直接用  组件类  Component  ✅ 需要  挂载到节点 直接使用typescript// 在任何 .ts 文件中直接引用
+import { adData } from './framework/AdData';
+
+// 直接调用
+adData.add({ title: "广告1" });
+adData.addFromWindow();
+const data = adData.acquire();常见的不需要挂载的类plaintextassets/script/framework/
+├── AdData.ts       ← 纯数据管理，不挂载
+├── clientEvent.ts  ← 事件总线，不挂载
+├── gameStorage.ts  ← 本地存储，不挂载
+├── Constants.ts    ← 常量配置，不挂载
+└── uiManager.ts    ← 可能需要挂载（如果继承Component）总结✅ AdData.ts 不需要挂载，直接 import { adData } 就能在任何地方使用！这就是为什么设计成这种简单模式 - 全局单例，随处可用。根据上面再简易进行改造，实现预制体可以实例化，然后绑定，而不是只能绑死一个预制体，可以绑定多个预制体广告根据上面再简易进行改造，实现预制体可以实例化，然后绑定，而不是只能绑死一个预制体，可以绑定多个预制体广告深度思考 · 40s用户想要更灵活的设计：不只是绑定一个预制体，可以支持多个不同的预制体预制体可以动态实例化每个预制体实例化后可以独立绑定数据让我设计一个更简洁灵活的方案。明白！让设计更灵活 - 支持多种预制体，动态加载和实例化。1. AdData.ts - 增强版（支持多预制体）文件路径: assets/script/framework/AdData.tstypescript/**
+ * 全局广告管理 - 简易版
+ * 支持：数据池 + 多预制体 + 动态实例化
+ */
+
+import { Prefab, Node, instantiate, find, Layers, resources } from 'cc';
+
+interface AdInfo {
+    data: any;
+    used: boolean;
+}
+
+class AdData {
+    // 数据池
+    private _pool: AdInfo[] = [];
+    
+    // 预制体缓存 { 名称: Prefab }
+    private _prefabs: Map<string, Prefab> = new Map();
+
+    // ==================== 数据管理 ====================
+
+    /** 添加广告数据（深拷贝） */
+    add(data: any): number {
+        const copied = JSON.parse(JSON.stringify(data));
+        this._pool.push({ data: copied, used: false });
+        console.log("[AdData] 添加数据，当前池:", this._pool.length);
+        return this._pool.length - 1;
+    }
+
+    /** 获取一个未使用的数据（深拷贝） */
+    acquire(): any {
+        for (const item of this._pool) {
+            if (!item.used) {
+                item.used = true;
+                return JSON.parse(JSON.stringify(item.data));
+            }
+        }
+        console.warn("[AdData] 没有可用数据");
+        return null;
+    }
+
+    /** 从 window 获取并添加 */
+    addFromWindow(): any {
+        const data = window['NativeAdData'];
+        if (data) {
+            window['NativeAdData'] = null;
+            this.add(data);
+            return data;
+        }
+        return null;
+    }
+
+    /** 重置所有数据为未使用 */
+    reset() {
+        this._pool.forEach(item => item.used = false);
+    }
+
+    /** 清空数据 */
+    clear() {
+        this._pool = [];
+    }
+
+    /** 可用数量 */
+    get available(): number {
+        return this._pool.filter(item => !item.used).length;
+    }
+
+    // ==================== 预制体管理 ====================
+
+    /**
+     * 加载预制体（支持多个）
+     * @param name 预制体名称（用于后续获取）
+     * @param path 资源路径（不含后缀）
+     */
+    loadPrefab(name: string, path: string): Promise<Prefab> {
+        return new Promise((resolve, reject) => {
+            // 已缓存直接返回
+            if (this._prefabs.has(name)) {
+                resolve(this._prefabs.get(name)!);
+                return;
+            }
+
+            resources.load(path, Prefab, (err, prefab) => {
+                if (err) {
+                    console.error(`[AdData] 加载预制体失败: ${path}`, err);
+                    reject(err);
+                    return;
+                }
+                this._prefabs.set(name, prefab);
+                console.log(`[AdData] 预制体已缓存: ${name}`);
+                resolve(prefab);
+            });
+        });
+    }
+
+    /**
+     * 创建广告实例
+     * @param prefabName 预制体名称（需先 loadPrefab）
+     * @param data 可选，指定数据（不传则从池中获取）
+     * @param options 位置等选项
+     */
+    create(prefabName: string, data?: any, options?: {
+        parent?: Node;
+        x?: number;
+        y?: number;
+    }): Node | null {
+        const prefab = this._prefabs.get(prefabName);
+        if (!prefab) {
+            console.error(`[AdData] 预制体未加载: ${prefabName}`);
+            return null;
+        }
+
+        // 获取数据
+        const adData = data || this.acquire();
+        if (!adData) {
+            console.error("[AdData] 没有可用的广告数据");
+            return null;
+        }
+
+        // 实例化
+        const node = instantiate(prefab);
+        
+        // 添加到父节点
+        const parent = options?.parent || find("Canvas");
+        parent?.addChild(node);
+
+        // 设置 Layer 为 UI_2D
+        this._setLayer(node, Layers.Enum.UI_2D);
+
+        // 设置位置
+        node.setPosition(options?.x || 0, options?.y || 0, 0);
+        node.setSiblingIndex(9999);
+
+        // 调用组件的 init 方法（如果有）
+        const comp = node.getComponent('Prefabload') as any;
+        comp?.init?.(adData);
+
+        console.log(`[AdData] 创建广告: ${prefabName}`);
+        return node;
+    }
+
+    /** 递归设置 Layer */
+    private _setLayer(node: Node, layer: number) {
+        node.layer = layer;
+        node.children.forEach(child => this._setLayer(child, layer));
+    }
+}
+
+// 导出全局单例
+export const adData = new AdData();2. prefabload.ts - 通用广告组件typescriptimport { _decorator, Component, Node, Sprite, Label, assetManager, Texture2D, SpriteFrame, ImageAsset } from 'cc';
+const { ccclass, property } = _decorator;
+
+@ccclass('Prefabload')
+export class Prefabload extends Component {
+
+    @property(Sprite)
+    MD_ad_img: Sprite = null!;
+    @property(Label)
+    MD_ad_title: Label = null!;
+    @property(Sprite)
+    MD_ad_icon: Sprite = null!;
+    @property(Label)
+    MD_ad_desc: Label = null!;
+    @property(Label)
+    MD_ad_source: Label = null!;
+
+    private _data: any = null;
+
+    /** 初始化 - 由 adData.create() 调用 */
+    init(data: any) {
+        this._data = data;
+        if (!data) return;
+
+        // 填充数据
+        if (this.MD_ad_title) this.MD_ad_title.string = data.title || "";
+        if (this.MD_ad_source) this.MD_ad_source.string = data.source || "";
+        if (this.MD_ad_desc) this.MD_ad_desc.string = data.desc || "";
+        if (data.imgUrlList?.[0]) this.loadImg(data.imgUrlList[0], this.MD_ad_img);
+        if (data.icon) this.loadImg(data.icon, this.MD_ad_icon);
+
+        // 绑定点击事件
+        this.node.on(Node.EventType.TOUCH_END, this.onClick, this);
+    }
+
+    private loadImg(url: string, sprite: Sprite) {
+        if (!url || !sprite) return;
+        assetManager.loadRemote<ImageAsset>(url, (err, image) => {
+            if (!err && sprite.isValid) {
+                const texture = new Texture2D();
+                texture.image = image;
+                const spriteFrame = new SpriteFrame();
+                spriteFrame.texture = texture;
+                sprite.spriteFrame = spriteFrame;
+                sprite.sizeMode = Sprite.SizeMode.CUSTOM;
+            }
+        });
+    }
+
+    onClick() {
+        this.openUrl(this._data?.appDetailUrl);
+    }
+
+    openUrl(url?: string) {
+        if (url) window.qg?.openDeeplink?.({ uri: url });
+    }
+
+    openPermission() {
+        this.openUrl(this._data?.permissionUrl);
+    }
+
+    openPrivacy() {
+        this.openUrl(this._data?.privacyUrl);
+    }
+
+    close() {
+        this.node.destroy();
+    }
+}3. 使用示例typescriptimport { adData } from './framework/AdData';
+
+// ========== 初始化：加载多个预制体 ==========
+
+async start() {
+    // 加载不同的广告预制体
+    await adData.loadPrefab('initAd', 'prefab/ui/InitAd');       // 初始化广告
+    await adData.loadPrefab('bannerAd', 'prefab/ui/BannerAd');   // 横幅广告
+    await adData.loadPrefab('nativeAd', 'prefab/ui/NvAd-md');    // 原生广告
+    
+    console.log("所有预制体加载完成");
+}
+
+// ========== 添加广告数据 ==========
+
+// 从 window 获取
+adData.addFromWindow();
+
+// 手动添加多个
+adData.add({ title: "广告1", appDetailUrl: "url1", imgUrlList: ["img1"] });
+adData.add({ title: "广告2", appDetailUrl: "url2", imgUrlList: ["img2"] });
+adData.add({ title: "广告3", appDetailUrl: "url3", imgUrlList: ["img3"] });
+
+// ========== 创建广告实例 ==========
+
+// 使用不同预制体创建
+adData.create('initAd', null, { x: 0, y: 200 });    // 初始化广告
+adData.create('bannerAd', null, { x: 0, y: 0 });    // 横幅广告
+adData.create('nativeAd', null, { x: 0, y: -200 }); // 原生广告
+
+// 指定数据创建
+adData.create('nativeAd', {
+    title: "自定义广告",
+    imgUrlList: ["http://custom.jpg"]
+}, { x: 100, y: 100 });
+
+// 批量创建同类型
+for (let i = 0; i < 3; i++) {
+    adData.create('nativeAd', null, { y: 200 - i * 150 });
+}流程图plaintext┌────────────────────────────────────────────────────────┐
+│                      使用流程                           │
+├────────────────────────────────────────────────────────┤
+│                                                        │
+│  1. 加载预制体（可多个）                                 │
+│     await adData.loadPrefab('initAd', 'prefab/...')    │
+│     await adData.loadPrefab('banner', 'prefab/...')    │
+│                                                        │
+│  2. 添加数据                                            │
+│     adData.add(data1)                                  │
+│     adData.add(data2)                                  │
+│     adData.addFromWindow()                             │
+│                                                        │
+│  3. 创建实例（选择预制体 + 自动/手动数据）               │
+│     adData.create('initAd')        // 自动取数据        │
+│     adData.create('banner', data)  // 指定数据          │
+│                                                        │
+│  4. 内部自动：                                          │
+│     → 实例化预制体                                      │
+│     → 设置 UI_2D Layer                                 │
+│     → 调用 init(data)                                  │
+│     → 填充UI + 绑定事件                                 │
+│                                                        │
+└────────────────────────────────────────────────────────┘核心优势 特性  说明  多预制体  loadPrefab() 支持加载任意数量预制体  按名取用  create('name') 用名字选择预制体  数据独立  每个实例深拷贝独立数据  自动绑定  init() 自动填充UI和绑定事件  极简API  只有3个核心方法 typescriptadData.loadPrefab(name, path)  // 加载
+adData.add(data)               // 添加数据
+adData.create(name, data?, options?)  // 创建这样就可以灵活管理多种广告预制体了！ await adData.loadPrefab('initAd', 'prefab/ui/InitAd'), 'prefab/ui/InitAd'这个是预制体的加载路径，引用到对应预制体吗？ await adData.loadPrefab('initAd', 'prefab/ui/InitAd'), 'prefab/ui/InitAd'这个是预制体的加载路径，引用到对应预制体吗？深度思考 · 3s用户问的是 'prefab/ui/InitAd' 这个路径是否能正确加载到预制体。在 Cocos Creator 中，resources.load() 加载资源时：路径是相对于 assets/resources/ 目录的不需要文件后缀（.prefab）路径区分大小写所以 'prefab/ui/InitAd' 实际上是加载 assets/resources/prefab/ui/InitAd.prefab让我检查一下项目中预制体的实际位置。让我检查一下项目中预制体的实际路径：已探索8目录已查看目录ui8 个结果深度思考 · 6s预制体确实存在于 assets/resources/prefab/ui/InitAd.prefab所以路径 'prefab/ui/InitAd' 是正确的：resources.load() 的路径是相对于 assets/resources/ 的不需要加 .prefab 后缀最终加载的是 assets/resources/prefab/ui/InitAd.prefab是的，路径正确！ 路径说明plaintextresources.load('prefab/ui/InitAd', ...)
+                    ↓
+加载: assets/resources/prefab/ui/InitAd.prefab规则 说明  值  基础目录  assets/resources/  相对路径  prefab/ui/InitAd  完整路径  assets/resources/prefab/ui/InitAd.prefab  后缀  不需要写 .prefab 项目中可用的预制体typescript// 初始化广告
+await adData.loadPrefab('initAd', 'prefab/ui/InitAd');
+
+// 原生广告
+await adData.loadPrefab('nativeAd', 'prefab/ui/NvAd-md');
+
+// 主UI
+await adData.loadPrefab('mainUI', 'prefab/ui/mainUI');
+
+// 列表项
+await adData.loadPrefab('listItem', 'prefab/ui/MainListItem');注意：只有放在 assets/resources/ 目录下的资源才能用 resources.load() 动态加载。 this.node.on(Node.EventType.TOUCH_END, this.onClick, this);这是干什么的？ this.node.on(Node.EventType.TOUCH_END, this.onClick, this);这是干什么的？深度思考 · 12s用户问的是 this.node.on(Node.EventType.TOUCH_END, this.onClick, this) 这行代码的作用。这是 Cocos Creator 中给节点绑定触摸事件的代码。让我解释一下：这是代码动态绑定触摸事件，相当于在编辑器中手动绑定按钮点击事件。代码解析typescriptthis.node.on(Node.EventType.TOUCH_END, this.onClick, this);
+//    │              │                      │          │
+//    │              │                      │          └── 回调函数的 this 指向
+//    │              │                      └── 触发时调用的函数
+//    │              └── 事件类型：触摸结束（手指抬起）
+//    └── 当前组件所在的节点作用当用户点击这个节点时，自动调用 onClick 方法等同于在编辑器中这样设置：plaintextButton 组件
+├── ClickEvents
+│   ├── Target: 当前节点
+│   ├── Component: Prefabload
+│   ├── Handler: onClick
+│   └── CustomEventData: (空)常用事件类型 事件  说明  TOUCH_START  手指按下  TOUCH_MOVE  手指移动  TOUCH_END  手指抬起（点击完成）  TOUCH_CANCEL  触摸取消 对比你现在的代码你现在的方法需要在编辑器中手动绑定：typescript// 需要编辑器绑定按钮事件，并设置 CustomEventData
+gotoAppDetail() { ... }
+gotoPermissionUrl() { ... }
+gotPrivacyUrl() { ... }用代码绑定的好处是不需要在编辑器设置，完全动态：typescript// 代码自动绑定，不依赖编辑器
+init(data: any) {
+    this.adData = data;
+    
+    // 给整个广告区域绑定点击事件
+    this.node.on(Node.EventType.TOUCH_END, this.gotoAppDetail, this);
+    
+    // 或者给特定子节点绑定
+    this.node.getChildByName("btnPrivacy")?.on(
+        Node.EventType.TOUCH_END, 
+        this.gotPrivacyUrl, 
+        this
+    );
+}总结 方式  说明  优点  编辑器绑定  Button 组件 + ClickEvents  可视化配置  代码绑定  node.on(事件, 回调, this)  动态灵活，多实例复用 对于你的多实例广告场景，代码绑定更合适，因为每个实例的数据不同，事件回调需要访问各自独立的 this.adData。这里手动绑定也可以吧，因为data是不同的，跳转的url也会不同吧这里手动绑定也可以吧，因为data是不同的，跳转的url也会不同吧深度思考 · 10s用户问的对！即使在编辑器中手动绑定事件，只要每个实例的 this.adData 是独立的（通过 init(data) 传入不同的深拷贝数据），那么点击时访问的 this.adData.appDetailUrl 等也会是各自独立的值。所以：编辑器手动绑定 ✅ 可以代码动态绑定 ✅ 也可以两种方式都能工作，因为关键是 this.adData 是每个实例独立的数据副本。让我简单确认这个理解。完全正确！ 手动绑定也可以！原因关键在于 this.adData 是每个实例独立的数据：typescript// 实例A 调用 init(dataA)
+// this.adData = dataA (独立副本)
+// 点击时 → this.adData.appDetailUrl = "urlA"
+
+// 实例B 调用 init(dataB)  
+// this.adData = dataB (独立副本)
+// 点击时 → this.adData.appDetailUrl = "urlB"两种方式对比 方式  绑定位置  数据来源  结果  编辑器绑定  预制体中配置  this.adData  ✅ 每个实例跳转不同URL  代码绑定  init() 中绑定  this.adData  ✅ 每个实例跳转不同URL 你现在的代码就能工作typescript// 编辑器中绑定按钮事件到这些方法
+gotoAppDetail() {
+    // this 指向当前实例，adData 是该实例的独立数据
+    if(this.adData && this.adData.appDetailUrl) {
+        window.qg.openDeeplink({uri: this.adData.appDetailUrl})
+    }
+}只要每个实例通过 init(data) 传入了不同的数据副本，点击时就会跳转到各自的 URL。总结✅ 编辑器手动绑定完全没问题，更直观
+✅ 代码绑定只是另一种选择，适合更动态的场景你保持现在的写法就行！

@@ -1,0 +1,808 @@
+@property(cc.Sprite)
+
+MD_ad: cc.Sprite;
+
+@property(cc.Sprite)
+
+MD_ad_img: cc.Sprite;
+
+@property(cc.Label)
+
+MD_ad_title: cc.Label;
+
+@property(cc.Sprite)
+
+MD_ad_icon: cc.Sprite;
+
+@property(cc.Label)
+
+MD_ad_desc: cc.Label;
+
+@property(cc.Label)
+
+MD_ad_source: cc.Label; 这些节点抽离为新的组件后，可以依旧在这里完成初始化吗？他们的转台可以保留吗？比如图片填充进去Explaining component structureExplaining component structureIf I add a new TS component to the same root node and shift the @property attributes to a subcomponent, the AdLoader script can still reference it using @property(AdMDView) adMDView: AdMDView and then call this.adMDView.setData(data). With this setup, the parent no longer has to manage Sprites and Labels individually. Initialization can happen within the new component, and if needed, I can expose properties or methods. Remember to consider property serialization, as moving nodes could break references.可以，但要分两种情况来说，你心里会更清楚一点。1. “抽离为新组件”具体是怎么做？一般有两种做法：情况 A：只是在同一个节点上挂一个新脚本组件 例如你新建一个 MDAdView.ts：ts// MDAdView.ts
+const { ccclass, property } = cc._decorator;
+
+@ccclass
+export default class MDAdView extends cc.Component {
+    @property(cc.Sprite)
+    MD_ad: cc.Sprite = null;
+
+    @property(cc.Sprite)
+    MD_ad_img: cc.Sprite = null;
+
+    @property(cc.Label)
+    MD_ad_title: cc.Label = null;
+
+    @property(cc.Sprite)
+    MD_ad_icon: cc.Sprite = null;
+
+    @property(cc.Label)
+    MD_ad_desc: cc.Label = null;
+
+    @property(cc.Label)
+    MD_ad_source: cc.Label = null;
+
+    public init(data: any) {
+        // 在这里填充图片、文案等
+        // this.MD_ad_img.spriteFrame = ...
+        // this.MD_ad_title.string = ...
+    }
+}然后在原来的 AdLoader.ts 里改成：ts@property(MDAdView)
+mdAdView: MDAdView = null;再在 AdLoader 里调用：tsthis.mdAdView.init(adData);✅ 这种方式下：这些节点都由 MDAdView 管理； 初始化逻辑也可以完全移动到 MDAdView.init() 中； 状态会保留：一旦你给 Sprite、Label 赋值了，只要这个节点没被销毁/重新实例化，图片、文字都一直在。如果你坚持“仍然在 AdLoader 里初始化”，也可以： 
+在 MDAdView 里把这些属性设为 public，然后 AdLoader 拿到 this.mdAdView.MD_ad_img 等自己去赋值。只是设计上不太优雅，推荐把 UI 初始化逻辑一起移到新组件里。情况 B：把这块 UI 做成一个独立 Prefab（资源） 比如你做了一个 MDAdItem.prefab，里面挂 MDAdView.ts，然后在场景里用 cc.instantiate 动态生成。这种情况注意几点：原来 AdLoader 上直接拖节点引用的那些 @property(cc.Sprite) 基本都会失效，因为节点已经不在当前场景结构里，转成 prefab 资源了；正确做法通常是：在 AdLoader 上拖一个 @property(cc.Prefab) mdAdPrefab: cc.Prefab;运行时 let node = cc.instantiate(this.mdAdPrefab);let view = node.getComponent(MDAdView);view.init(adData);✅ 在 prefab 实例上填充好的图片 / 文案，同样只要这个实例节点不被销毁，状态就会一直保留。 
+❌ 如果你每次都 destroy 再 instantiate 新的 prefab，那就是新的实例，需要重新初始化。2. 回答你问的两个核心问题这些节点抽离为新的组件后，可以依旧在这里完成初始化吗？可以：要么在父组件（原来的 AdLoader）里，持有新组件的引用 @property(MDAdView) mdAdView，然后依旧在这里给 mdAdView 里的 sprite/label 赋值；要么更推荐：在新组件里写一个 init(data) 方法，让父组件只负责把数据丢进去，不直接操作具体节点。他们的状态可以保留吗？比如图片填充进去可以保留，条件是：节点没有被 destroy；prefab 没被重新 instantiate 替换；没有别的逻辑重新给这些 Sprite/Label 赋值覆盖掉。一旦你在运行时 sprite.spriteFrame = xxx、label.string = 'xxx'，这个状态就会跟着节点一起存在，除非你自己把它干掉。如果你方便，把现在 AdLoader.ts 的结构贴多一点（比如类头部、onLoad / start 里是怎么初始化的），我可以按你现有写法帮你改成一个“父组件 + 子视图组件”的完整示例。我选择方案一，我想尽可能的复用现在的代码，并且在adloader中完成赋值，我可以将整个组件当做节点在该脚本引入？ 这个homeMain是属于场景还是节点？我可以这这里展示我的抽离好的组件吗我选择方案一，我想尽可能的复用现在的代码，并且在adloader中完成赋值，我可以将整个组件当做节点在该脚本引入？ 这个homeMain是属于场景还是节点？我可以这这里展示我的抽离好的组件吗我先看一下当前项目里的 AdLoader.ts 和 HomeMain 相关脚本/节点结构，再结合你的需求给你一个贴近现有写法的用法示例。已探索2文件 1检索已查看AdLoader.ts(1 - 400)已检索文件*HomeMain*3 个结果已查看HomeMain.ts先把你问的几个点分开说明一下。1. “把整个组件当成节点在脚本里引入”可以吗？可以，而且正好是 Cocos Creator 推荐的用法之一，有两种写法：写法 1：直接引用组件（推荐）tsimport MDAdView from './MDAdView';
+
+const { ccclass, property } = cc._decorator;
+
+@ccclass
+export default class AdLoader extends cc.Component {
+
+    @property(MDAdView)
+    mdAdView: MDAdView = null;
+
+    // ...
+}在编辑器里操作：给你的中部广告根节点挂上 MDAdView 脚本；在 AdLoader 脚本的 mdAdView 属性上，拖这个广告节点 过去；引擎会自动找到这个节点上的 MDAdView 组件，赋值给 mdAdView。之后你在 AdLoader 里就可以：tsthis.mdAdView.MD_ad_img.spriteFrame = ...;
+this.mdAdView.MD_ad_title.string = ...;逻辑仍然写在 AdLoader 里，只是通过 mdAdView 去访问这些 Sprite/Label，满足你“在 adloader 中完成赋值、尽量复用代码”的需求。写法 2：先拿节点再取组件ts@property(cc.Node)
+mdAdNode: cc.Node = null;
+
+// 使用时：
+const mdAdView = this.mdAdNode.getComponent(MDAdView);
+mdAdView.MD_ad_img.spriteFrame = ...;本质一样，只是多一步 getComponent。你想最少改动，就用写法 1 就足够了。2. HomeMain 是“场景”还是“节点”？从你项目里这段代码看：ts@ccclass
+export default class HomeMain extends UIParent {
+    @property(cc.Label)
+    goldNum: cc.Label = null;
+    // ...
+}HomeMain 是一个 脚本组件，挂在某个节点（通常是一个 UI 面板的根节点）上，不是一个 .fire 场景资源本身。结合目录：场景在 assets/Scene/Game.fire、adLoader.fire；HomeMain.ts 在 assets/Script/UIManager/HomeMain/；一般这种结构是： 
+某个场景（比如 Game.fire）里挂了 UIManager，然后 UIManager 动态加载 UIPanel/HomeMain 这个 prefab，根节点上挂 HomeMain 组件。所以可以理解为：Scene = Game.fire / adLoader.fire Node = HomeMain 面板根节点 HomeMain.ts = 挂在这个节点上的组件脚本3. 能不能在 HomeMain 里展示你抽离好的组件？可以，而且非常适合复用：抽离好的广告组件（比如 MDAdView）挂在一个节点上（可以是 prefab，也可以直接是 HomeMain 的子节点）；在 HomeMain 里写：ts   import MDAdView from '../../xxx/MDAdView';
+
+   @property(MDAdView)
+   mdAdView: MDAdView = null;在编辑器里，把挂着 MDAdView 的那个广告节点拖到 mdAdView 上。这样：在 AdLoader 里，你通过 @property(MDAdView) mdAdView: MDAdView 来赋值；在 HomeMain 里，同样通过 @property(MDAdView) mdAdView: MDAdView 来赋值；一个组件，多处复用，逻辑你可以继续写在各自的脚本里（比如 AdLoader 负责广告拉取和填充，HomeMain 只展示某种广告位）。4. 结合你现在的 renderNativeAd 怎么做最少改动？考虑你现在有一堆：ts@property(cc.Sprite)
+MD_ad: cc.Sprite;
+// ...
+@property(cc.Label)
+MD_ad_source: cc.Label;和：tsrenderMapping = {
+    centerNativeAdXXX: {
+        box: 'MD_ad',
+        img: 'MD_ad_img',
+        title: 'MD_ad_title',
+        source: 'MD_ad_source',
+        desc: 'MD_ad_desc',
+        icon: 'MD_ad_icon',
+    }
+}以及：tslet o = this.renderMapping[e.key];
+this[o.title].string = e.title || '';
+// ...
+this.loadPics(e.imgUrlList?.[0], o.img);如果你想尽量少改代码、又把这几个 MD_xxx 抽到新组件里，可以走这个思路（示意）：在新组件 MDAdView 里保留这些属性：ts  export default class MDAdView extends cc.Component {
+      @property(cc.Sprite)
+      MD_ad: cc.Sprite = null;
+      @property(cc.Sprite)
+      MD_ad_img: cc.Sprite = null;
+      @property(cc.Label)
+      MD_ad_title: cc.Label = null;
+      @property(cc.Sprite)
+      MD_ad_icon: cc.Sprite = null;
+      @property(cc.Label)
+      MD_ad_desc: cc.Label = null;
+      @property(cc.Label)
+      MD_ad_source: cc.Label = null;
+  }在 AdLoader 里新增：ts  @property(MDAdView)
+  mdAdView: MDAdView = null;然后你可以只对 centerNativeAdXXX 做一个特殊处理，不动其它逻辑，例如：ts  public renderNativeAd(e) {
+      // ... 原来的通用逻辑
+
+      if (e.key === 'centerNativeAdXXX' && this.mdAdView) {
+          if (e.title) this.mdAdView.MD_ad_title.string = e.title;
+          if (e.source) this.mdAdView.MD_ad_source.string = e.source;
+          if (e.desc) this.mdAdView.MD_ad_desc.string = e.desc;
+
+          this.loadPics(e.imgUrlList?.[0], 'MD_ad_img'); // 这里你再按原有方式加载到对应 sprite
+          if (e.icon) this.loadPics(e.icon, 'MD_ad_icon');
+
+          this.mdAdView.MD_ad.node.active = true;
+          return;
+      }
+
+      // 其它 key 走原来的 this.renderMapping 流程
+  }这样你：把 MD_xxx 这坨从 AdLoader 面板上移走，挂到 MDAdView 上；AdLoader 只多一个 @property(MDAdView) 和一个分支；HomeMain 也可以拖同一个 MDAdView 节点来用，自己赋值。如果你愿意，把你打算写的 MDAdView.ts 贴出来，我可以直接按你现在 AdLoader 的结构帮你把“最少改动版”的写法整理出来，你只要复制粘贴就能测试。我得先创建一个  export default class MDAdView extends cc.Component {
+
+      @property(cc.Sprite)
+
+      MD_ad: cc.Sprite = null;
+
+      @property(cc.Sprite)
+
+      MD_ad_img: cc.Sprite = null;
+
+      @property(cc.Label)
+
+      MD_ad_title: cc.Label = null;
+
+      @property(cc.Sprite)
+
+      MD_ad_icon: cc.Sprite = null;
+
+      @property(cc.Label)
+
+      MD_ad_desc: cc.Label = null;
+
+      @property(cc.Label)
+
+      MD_ad_source: cc.Label = null;
+
+  }结构的prefab吗？貌似只能创建场景和prefab我得先创建一个  export default class MDAdView extends cc.Component {
+
+      @property(cc.Sprite)
+
+      MD_ad: cc.Sprite = null;
+
+      @property(cc.Sprite)
+
+      MD_ad_img: cc.Sprite = null;
+
+      @property(cc.Label)
+
+      MD_ad_title: cc.Label = null;
+
+      @property(cc.Sprite)
+
+      MD_ad_icon: cc.Sprite = null;
+
+      @property(cc.Label)
+
+      MD_ad_desc: cc.Label = null;
+
+      @property(cc.Label)
+
+      MD_ad_source: cc.Label = null;
+
+  }结构的prefab吗？貌似只能创建场景和prefabClarifying prefab usage in Cocos CreatorClarifying prefab creation processI need to explain the process for the user's question about creating a prefab first. Actually, they don't need to do that just for the script. They should create the TypeScript script MDAdView.ts in the Script folder and attach it to a node or prefab afterward. The editor itself only creates Scenes and Prefabs. So, in summary: Create MDAdView.ts in Assets/Script matching the AdLoader TS import structure. Then we can proceed with further steps.Explaining scene setup and prefab useTo set up the ad in a scene like adLoader.fire or HomeMain prefab, I need to select the ad root node and add the MDAdView component. I'll set fields like MD_ad and MD_ad_img by dragging child nodes into the inspector. In AdLoader.ts, I have to declare @property(MDAdView) mdAdView: MDAdView = null; and import MDAdView.A prefab is not necessary for a quick test; I can attach MDAdView directly to the existing node in the adLoader scene for minimal disruption. This keeps things simple for testing.Clarifying prefab usage in Cocos CreatorIn Cocos Creator, you can create a prefab as a UI template and attach the MDAdView script to it for use in multiple scenes. Yet, it's stated that you can only create scenes and prefabs. To avoid confusion, I should describe the menu names generically, like "Right-click in the Asset Manager → Create → TypeScript." Basically, the script isn't the same as a prefab. The prefab includes nodes and components, while MDAdView is a component script. You can create the script file and attach it to an existing node without making a prefab, unless you wish to reuse it across multiple scenes. For minimal changes, I suggest skipping the extra prefab for now.不需要「先」创建 prefab，先搞清楚三个概念再操作会更顺：MDAdView：只是一个脚本组件（extends cc.Component）节点 Node：场景或 prefab 里的一个 UI 节点Prefab：把一个节点（连同上面的组件）保存成资源，方便复用/实例化你现在要做的是：创建一个脚本组件 MDAdView.ts 把这个脚本挂在某个节点上（这个节点可以在场景里，也可以在 prefab 里） 在 AdLoader 中通过 @property(MDAdView) 引用这个组件，继续在 AdLoader 里赋值整个过程中，是否做成 prefab 是可选的，不是必须。具体操作步骤（最小改动方案）1. 创建脚本组件 MDAdView.ts在编辑器资源管理器里（Assets 面板）：右键 assets/Script（或你想放的位置）选择「新建 → TypeScript（脚本）」 命名为 MDAdView.ts，内容大致是：tsconst { ccclass, property } = cc._decorator;
+
+@ccclass
+export default class MDAdView extends cc.Component {
+    @property(cc.Sprite)
+    MD_ad: cc.Sprite = null;
+
+    @property(cc.Sprite)
+    MD_ad_img: cc.Sprite = null;
+
+    @property(cc.Label)
+    MD_ad_title: cc.Label = null;
+
+    @property(cc.Sprite)
+    MD_ad_icon: cc.Sprite = null;
+
+    @property(cc.Label)
+    MD_ad_desc: cc.Label = null;
+
+    @property(cc.Label)
+    MD_ad_source: cc.Label = null;
+}（这里只是示例结构，你可以按需加字段）这一步只是在 创建脚本文件，跟场景/prefab 没关系。2. 把 MDAdView 挂在一个现有节点上（不用 prefab 也行）找到你场景里中部广告那块的根节点（之前挂 MD_ad 等节点的父节点）：选中这个节点，在 Inspector 里点击「添加组件 → 自定义脚本 → MDAdView」挂上脚本后，Inspector 会出现 MD_ad, MD_ad_img 等属性把对应的子节点的 Sprite / Label 拖到这些属性上完成绑定这样，这个节点就“拥有”了 MDAdView 这个组件。如果以后你想把这块广告做成 prefab 再复用，只需要把这个节点拖到 Assets 里生成 prefab 即可，不影响现在的逻辑。3. 在 AdLoader 里引用 MDAdView（继续在 AdLoader 中赋值）在 AdLoader.ts 顶部引入：tsimport MDAdView from "./相对路径/MDAdView"; // 按你实际路径填写在类里增加一个属性：ts@property(MDAdView)
+mdAdView: MDAdView = null;在编辑器中：选中挂着 AdLoader 的那个节点（比如场景根节点或某个管理节点）在 Inspector 中看到 mdAdView 属性把刚才挂了 MDAdView 的那个广告节点拖到 mdAdView 上之后你就可以在 AdLoader 里继续按你想要的方式赋值，例如在 renderNativeAd 里：tsif (e.key === 'centerNativeAdXXX' && this.mdAdView) {
+    if (e.title)  this.mdAdView.MD_ad_title.string  = e.title;
+    if (e.desc)   this.mdAdView.MD_ad_desc.string   = e.desc;
+    if (e.source) this.mdAdView.MD_ad_source.string = e.source;
+
+    this.loadPics(e.imgUrlList?.[0], 'MD_ad_img'); // 或者直接操作 this.mdAdView.MD_ad_img
+    if (e.icon) this.loadPics(e.icon, 'MD_ad_icon');
+
+    this.mdAdView.MD_ad.node.active = true;
+    return;
+}这样：UI 节点的引用都搬到了 MDAdView 里；逻辑仍然是在 AdLoader 中控制、赋值，符合你要的“在 adloader 中完成赋值、尽量复用现在代码”；不强依赖 prefab，只用场景里的现有节点就能跑起来，很适合你现在的测试构建。总结回答你那句疑问我得先创建一个结构的 prefab 吗？貌似只能创建场景和 prefab不用先创建 prefab，只需要先创建 脚本组件 MDAdView.ts，然后挂在某个节点上；你看到菜单里“创建场景 / prefab”，那是创建节点资源；脚本要通过“创建脚本/TypeScript 文件”来建，不是通过“新建 prefab”建出来的；prefab 只是后续如果你想把这块广告独立出来复用时再做，现在为了快速验证，直接在当前场景里挂脚本就可以了。如果你愿意把你中部广告那块节点层级（节点名）贴一下，我可以按你具体的节点名帮你写一段最接近现状的 MDAdView.ts + AdLoader.ts 修改点。绑定在a场景中的   MDAdView.ts 中的@property(cc.Sprite)
+
+    MD_ad: cc.Sprite = null;
+
+
+
+    @property(cc.Sprite)
+
+    MD_ad_img: cc.Sprite = null;
+等属性绑定在 a场景相应的节点，然后通过 renderNativeAd修改了节点，然后gotogame，a场景销毁对于节点都销毁，请问如果在b场景的b节点中通过MDAdView.ts 绑定某些节点，这些节点的值还会是a场景中修改的值吗？   比如a中MD_ad_img: cc.Sprite = ‘url’  b中引入还会是 url吗？
+
+绑定在a场景中的   MDAdView.ts 中的@property(cc.Sprite)
+
+    MD_ad: cc.Sprite = null;
+
+
+
+    @property(cc.Sprite)
+
+    MD_ad_img: cc.Sprite = null;
+等属性绑定在 a场景相应的节点，然后通过 renderNativeAd修改了节点，然后gotogame，a场景销毁对于节点都销毁，请问如果在b场景的b节点中通过MDAdView.ts 绑定某些节点，这些节点的值还会是a场景中修改的值吗？   比如a中MD_ad_img: cc.Sprite = ‘url’  b中引入还会是 url吗？
+
+Clarifying resource managementClarifying resource managementI need to clarify how shared resources work when using sprite frames. If you change a shared sprite frame asset, all instances reflect that change, but they're typically read-only. Usually, you load a remote image into a texture, then create a new sprite frame, which can also be a shared asset if reused. Additionally, cc.assetManager.loadRemote caches textures by URL, so if a second scene calls loadRemote with the same URL, it may hit the cache but still requires a call. Let's proceed to answer.不会保留，场景切换后是两套完全不同的实例。拆开讲一下你的问题场景：A 场景： 某个节点挂了 MDAdView 在 renderNativeAd 里把 MD_ad_img.spriteFrame 等改成了广告图片 调用 gotoGame()，切到 B 场景 A 场景被销毁B 场景： 另一个节点也挂了同一个脚本 MDAdView.ts 在 Inspector 里绑定了自己的 MD_ad_img 等节点 问：这些节点的值会不会是 A 场景里修改后的值（比如同一个 url 对应的图片）？1. 组件实例是“每个节点一份”，场景销毁就全没了export default class MDAdView extends cc.Component 只是“类定义”；A 场景中挂在节点上的，是这个类的一个实例；B 场景中挂在节点上的，是另一个实例；gotoGame 加载新场景时，A 场景整棵节点树会被销毁（除非你手动 cc.game.addPersistRootNode 保持持久化）；被销毁的节点 + 上面的 MDAdView 实例 + 其中的所有运行时状态（Sprite 的 spriteFrame、Label 的 string）都不存在了。所以：A 场景中 MD_ad_img.spriteFrame 赋值的结果 
+不会自动出现在 B 场景中 MDAdView 的 MD_ad_img 上。这两个组件实例互相之间没有自动数据传递。2. 那 url / 图片能不能“共享”？分两种情况理解：情况 A：你说的“= 'url'”只是脚本里保存的一个字符串tsthis.mdAdViewImgUrl = e.imgUrlList[0]; // 纯字符串这个字符串如果只是存在 A 场景的组件字段里，连同组件一起销毁；B 场景的组件不会自动有这个值。如果想让 B 场景也拿到这个 url，需要你自己把它存到一个全局/持久对象里，例如：window.Global.xxx = url;或 cc.sys.localStorage.setItem('lastAdImgUrl', url);或你项目已有的 GameData / 单例管理器里。然后在 B 场景里：tslet url = cc.sys.localStorage.getItem('lastAdImgUrl');
+if (url) {
+    cc.assetManager.loadRemote(url, { ext: ".image" }, (err, tex) => {
+        if (!err) this.mdAdView.MD_ad_img.spriteFrame = new cc.SpriteFrame(tex);
+    });
+}情况 B：你改的是一个资源对象本身比如两场景/两个节点都引用了同一个 SpriteFrame 资源，然后你在运行时修改了这个 SpriteFrame 对象的内部数据（很少这样做，一般不会这么用），理论上所有引用它的 Sprite 都会更新。但你现在的使用方式更像是：tscc.assetManager.loadRemote(url, (err, tex) => {
+    this.MD_ad_img.spriteFrame = new cc.SpriteFrame(tex);
+});这会生成一个新的 SpriteFrame 对象，赋值给 A 场景的那个 Sprite；B 场景的 Sprite 用的是另一个 SpriteFrame 引用，不会自动指向这个新的对象。3. 什么时候“状态会保留”？只有在这些节点本身没有被销毁，例如：你没有真正切换场景，只是在同一个 Scene 里隐藏/显示不同 UI 节点；或者你对某个节点调用了 cc.game.addPersistRootNode(node)，使其在场景切换时不被销毁：ts  cc.game.addPersistRootNode(this.node); // 比如把挂 MDAdView 的父节点设为常驻节点这样：A 场景切到 B 场景时，这个“常驻节点”其实跟着一起活着；上面的 MDAdView 组件和它的 Sprite/Label 状态也都会保留；B 场景照样能看到之前已经填好的图片。但这属于“把节点做成全局常驻”的方案，会改变你当前项目结构，用在少数需要跨场景保留 UI 的地方比较合适（例如全局悬浮按钮、全局广告层等）。4. 回到你的原问题，直接回答一句话A 场景中 MD_ad_img 被你加载了某个 url 对应的图片； 
+B 场景中另一个节点挂 MDAdView，再绑定自己的 MD_ad_img； 
+B 场景里这个 MD_ad_img 会不会自动是 A 场景的那张图？不会。 
+除非你做了下面其中一种事：没有销毁节点（使用常驻节点，或根本没切 Scene，只是隐藏/显示）； 手动把 url / 广告数据保存到全局（或本地存储），在 B 场景中重新根据这些数据赋值。如果你告诉我你现在 gotoGame() 的实现方式（是 cc.director.loadScene 还是 UI 切换），我可以帮你选一个成本最低的“怎么把广告图带到下一个场景”的方案。选一个成本最低的“怎么把广告图带到下一个场景”的方案。不只是图，我需要的是整个节点的保留选一个成本最低的“怎么把广告图带到下一个场景”的方案。不只是图，我需要的是整个节点的保留成本最低、又能“整个节点保留”的方案，就是： 
+把这块广告节点做成常驻节点（persistent node），A→B 场景切换时不销毁。也就是说： 不在 B 场景里再做一份新的 MDAdView 结构； 而是让 A 场景里的那一整个广告节点，直接跟着游戏全程活着。1. 原理一句话调用：tscc.game.addPersistRootNode(adRootNode);之后，adRootNode 以及它下面所有子节点、组件、当前的图片 / 文案等状态， 
+在任何 cc.director.loadScene() 之后都不会被销毁，会自动出现在新场景里。这刚好满足你要的：不只是图，我需要的是整个节点的保留2. 实际怎么改（建议这样做）假设你现在 A 场景里，有一个广告根节点 AdRoot，下面挂了 MDAdView，AdLoader 负责渲染。步骤 1：在 A 场景里把 AdRoot 设为常驻节点在挂在 AdRoot 或 AdLoader 上的脚本里（任选一个，通常是 AdLoader），加类似代码：tsconst { ccclass, property } = cc._decorator;
+
+@ccclass
+export default class AdLoader extends cc.Component {
+
+    private static _initedPersist = false;
+
+    onLoad() {
+        if (!AdLoader._initedPersist) {
+            AdLoader._initedPersist = true;
+            cc.game.addPersistRootNode(this.node); // 如果 AdLoader 就挂在广告根节点上
+            // 如果 AdLoader 挂在别的节点上，这里改为 cc.game.addPersistRootNode(this.adRootNode);
+        }
+
+        // 你原来的 onLoad 逻辑继续
+        // this.initQGNativeAd();
+        // ...
+    }
+}要点：addPersistRootNode 只需要、也只能对“同一个节点”调用一次， 
+所以用一个静态变量 _initedPersist 控制一下，避免重复添加时报错。这里用 this.node 是假设 AdLoader 就挂在你想保留的那个 UI 根节点上； 
+否则就用一个 @property(cc.Node) adRoot: cc.Node，专门指向广告那一块，再传它进去。步骤 2：照常在 A 场景里渲染广告你现在的 renderNativeAd 逻辑不用动：tspublic renderNativeAd(e) {
+    // ...
+    this.loadPics(e.imgUrlList?.[0], o.img);
+    // 设置 MD_ad_img / title / desc / icon 等
+}当你在 A 场景里把图片、文字都填好之后，它们都挂在这个“常驻节点”上。步骤 3：切到 B 场景当你调用 gotoGame() → cc.director.loadScene('Game') 之类的：A 场景里大部分节点会被销毁；但调用过 addPersistRootNode 的那一个根节点及其子节点不会被销毁，自动出现在新场景里；所以 B 场景一加载完，你已经能看到 A 场景填好的广告 UI，Sprite / Label 的状态完全保留。你可以把它理解为： 
+“这块广告 UI 已经从 A 场景里跳出来，变成一个全局浮在最上层的 UI”。3. 在 B 场景里需要做什么？如果你只是想“广告保持在屏幕上显示”，不需要在 B 场景做任何额外绑定：不要再在 B 场景里挂一份 MDAdView 脚本和一套节点，否则会重叠；只要控制场景布局，让这个常驻节点的位置不会被遮挡即可。如果 B 场景的某个脚本还想拿到这个 MDAdView 做点事（比如隐藏/更新）：tsimport MDAdView from "路径/MDAdView";
+
+@ccclass
+export default class SomeGameScript extends cc.Component {
+
+    mdAdView: MDAdView = null;
+
+    start() {
+        // 注意：常驻节点是根节点之一，可以按名字找到
+        const adNode = cc.director.getScene().getChildByName("AdRoot"); // 你广告根节点的名字
+        if (adNode) {
+            this.mdAdView = adNode.getComponent(MDAdView);
+        }
+    }
+
+    hideAd() {
+        if (this.mdAdView) {
+            this.mdAdView.node.active = false;
+        }
+    }
+}因为这个节点是从 A 场景带过来的，不能在 B 场景的 Inspector 里直接拖引用， 
+所以在 B 场景里用 getChildByName / cc.find 在 start 里动态拿一次就行。4. 需要注意的几点确保只保留一份广告节点 B 场景不要再放同样结构的广告 UI；如果以后从 B 再跳回 A，而 A 里又有 AdLoader 场景，记得 _initedPersist 这种静态开关，避免再 addPersistRootNode 一次。常驻节点会一直存在直到你主动销毁或 removePersistRootNode 如果某些时候不想显示，只需要 node.active = false 即可；不需要删除节点。布局问题 常驻节点会变成根节点之一（挂在一个隐藏的 DontDestroyOnLoad 根上）， 一般建议它自己带一个 Canvas 或已经设置好适配，否则要确保它的坐标系在不同场景下也能正常显示。 从你快游戏的布局（500x960）来看，只要这块 UI 原本是用 Canvas 适配设计好的，保留下来也基本没问题。总结选一个成本最低的“怎么把广告图带到下一个场景”的方案。不只是图，我需要的是整个节点的保留最省事的做法：在 A 场景里，对广告根节点调用 cc.game.addPersistRootNode(adRootNode)；A 场景渲染完广告后，直接 loadScene，广告节点会完整带到 B 场景；B 场景无需再搭建一份 UI 结构，整个节点（图 + 文案 + 状态）原封不动保留。如果你愿意贴一下 gotoGame() 的实现和广告根节点的大致层级（名字），我可以帮你写出一版直接可用的代码片段（在哪个脚本的哪一行加什么）。​AdLoader.ts 75-75​ import MDAdView from "路径/MDAdView";
+
+
+
+@ccclass
+
+export default class SomeGameScript extends cc.Component {
+
+
+
+    mdAdView: MDAdView = null;
+
+
+
+    start() {
+
+        // 注意：常驻节点是根节点之一，可以按名字找到
+
+        const adNode = cc.director.getScene().getChildByName("AdRoot"); // 你广告根节点的名字
+
+        if (adNode) {
+
+            this.mdAdView = adNode.getComponent(MDAdView);
+
+        }
+
+    }
+
+
+
+    hideAd() {
+
+        if (this.mdAdView) {
+
+            this.mdAdView.node.active = false;
+
+        }
+
+    }
+
+}       如果我想让她一直渲染，还需要先拿到这个长久渲染的节点？​AdLoader.ts 75-75​ import MDAdView from "路径/MDAdView";
+
+
+
+@ccclass
+
+export default class SomeGameScript extends cc.Component {
+
+
+
+    mdAdView: MDAdView = null;
+
+
+
+    start() {
+
+        // 注意：常驻节点是根节点之一，可以按名字找到
+
+        const adNode = cc.director.getScene().getChildByName("AdRoot"); // 你广告根节点的名字
+
+        if (adNode) {
+
+            this.mdAdView = adNode.getComponent(MDAdView);
+
+        }
+
+    }
+
+
+
+    hideAd() {
+
+        if (this.mdAdView) {
+
+            this.mdAdView.node.active = false;
+
+        }
+
+    }
+
+}       如果我想让她一直渲染，还需要先拿到这个长久渲染的节点？不需要。把两件事分开看，你就不会纠结了：1. “让她一直渲染 / 一直显示”要做什么？如果你的广告根节点在 A 场景里已经挂好脚本（AdLoader + MDAdView），然后你：tscc.game.addPersistRootNode(adRootNode);只要这一步做了：以后你 cc.director.loadScene('B')，这个 adRootNode 不会被销毁；它会自动出现在 B 场景里，保持 A 场景时的所有状态（图片、文字、active 状态等）；也就是说：你不用在 B 场景再去“拿到它”才能让它显示，它默认就会显示在那里。所以：仅仅是想让它“持续显示 / 持续渲染”，不需要额外 getChildByName。2. 那刚才那段 getChildByName 的代码是干嘛用的？这个是给 “其他脚本想控制它” 用的，比如：B 场景里的 SomeGameScript 想在某个时机把广告隐藏掉；或者想在 B 场景里更新这块广告的一些文案。这时，因为广告节点不是 B 场景自己创建的，而是从 A 场景带来的常驻节点，就没法在 Inspector 里拖引用，只能运行时用：tsconst adNode = cc.director.getScene().getChildByName("AdRoot");
+this.mdAdView = adNode.getComponent(MDAdView);来拿到引用，然后：tsthis.mdAdView.node.active = false; // 隐藏
+// 或其它 this.mdAdView.MD_ad_title.string = ...总结一下这段代码的作用：不是为了“让它渲染”， 是为了“让当前脚本拿到这个常驻节点的引用，方便做进一步控制”。3. 你的场景适合怎么用？如果你现在的诉求是：A 场景：AdLoader 拉了一张原生广告并渲染好；切到 B 场景：这块广告一直在那显示就行，不需要 B 场景自己再管它；那你要做的只有两步：在 AdLoader / 广告根节点的脚本里：ts   onLoad() {
+       if (!AdLoader._initedPersist) {
+           AdLoader._initedPersist = true;
+           cc.game.addPersistRootNode(this.node); // 或广告根节点
+       }
+       // 你原来的 initQGNativeAd 等逻辑
+   }正常 gotoGame() 切场景。就可以了，不需要在 B 场景里写 getChildByName 那段。只有当你在 B 场景里也想控制这个广告节点的显隐/更新， 
+才需要在 B 场景的脚本里先拿到它（getChildByName + getComponent），否则不需要。如果你愿意，把现在广告根节点的名字（或者截图/结构）告诉我，我可以帮你写一段“往 AdLoader 里加持久节点”的精确代码，你直接粘进去就能试。切换场景后为什么还是直接销毁了切换场景后为什么还是直接销毁了Investigating node destructionInvestigating node destructionThe user asked why their node is still being destroyed after switching scenes, which hints they might be using addPersistRootNode. I need to check the AdLoader.ts for persistent usage; currently, I don't see any. I'll analyze the whole file to see if gotoGame interacts with loadScene and check if they missed calling addPersistRootNode or if there's an issue with static variables resetting upon module reload in Cocos Creator 2.x. It seems they may not have added the code correctly, so I'll need to search more thoroughly.我先看一下你当前 AdLoader.ts 里是如何切换场景、以及是否有对节点做常驻设置，帮你定位为什么节点还是被销毁。已探索1文件 1检索已查看AdLoader.ts(400 - 523)已检索代码gotoGame\(0 个结果Clarifying scene managementClarifying scene managementIt seems clear that PreloadScene isn’t crucial; destruction occurs when calling loadScene, which clears non-persistent nodes, alongside your own destroy calls. The actual issue arises from calling destroy directly. They might be testing this with addPersistRootNode on this.node.parent, but they also destroy this.node.parent before calling loadScene. To ensure the persistent node survives, it's key to either remove those lines or adjust their timing relative to loadScene. Let's prepare a response.原因就在你自己的 gotoGame() 里——你在手动把节点干掉，所以无论有没有常驻，都被你自己销毁了。看你现在的代码（AdLoader.ts 478 行开始）：tsgotoGame() {
+    if (this.isPlayGame) return
+    this.isPlayGame = true;
+    window.$Evt.$off("login")
+    window.$Evt.$off("adLoaderRenderNativeAd")
+    window.$Evt.$off("adLoaderHideNativeAd")
+    window.$Evt.$off("nativeAdStatusChanged")
+    cc.director.preloadScene('Game', (completedCount, totalCount) => {
+
+    }, (error) => {
+        if (error) {
+            console.error('加载失败:', error);
+        } else {
+            window.setGlobalData?.({
+                preReferer: 'ym01',
+            })
+            this.node.removeAllChildren();
+            this.node.parent.destroy();
+            cc.director.loadScene('Game'); // 加载完成后切换场景
+        }
+    });
+}关键两句：tsthis.node.removeAllChildren();
+this.node.parent.destroy();this.node.removeAllChildren()：把当前节点下面所有子节点都删除（子树全没）。this.node.parent.destroy()：直接把父节点也销毁了。所以即便你之前对某个节点调用了 cc.game.addPersistRootNode：如果你给的是子节点，但它还挂在 this.node 或 this.node.parent 下， 
+removeAllChildren() / parent.destroy() 一样会把它干掉；即使引擎会把常驻节点挂到一个特殊的根节点上，你这句 destroy() 如果正好打在了那个被设为常驻的节点上，那也是直接销毁。换句话说： 
+你在 loadScene('Game') 之前，先手动把广告那一块节点树销毁了，自然到下一个场景就不存在了。要让节点真的“跨场景保留”，你需要保证两件事同时满足：对正确的节点调用一次 cc.game.addPersistRootNode 
+比如你决定让广告根节点 AdRoot 跨场景存在：ts   // 假设 AdLoader 就挂在 AdRoot 上
+   onLoad() {
+       // 只需要一次
+       cc.game.addPersistRootNode(this.node); 
+       // 你的其它 onLoad 逻辑...
+   }或者：ts   @property(cc.Node)
+   adRoot: cc.Node = null;
+
+   onLoad() {
+       cc.game.addPersistRootNode(this.adRoot);
+   }重点： 不要对一个会被你 destroy() 的节点调用；通常选“真正要保留的广告 UI 根节点”作为常驻节点。不要再把这个节点（或它的父节点）销毁 / removeAllChildren把上面这两句去掉或改写：ts   // this.node.removeAllChildren();
+   // this.node.parent.destroy();
+   cc.director.loadScene('Game');如果你只是想清一下 A 场景里的 UI，可以：把非广告 UI 放在另一个根节点下，销毁那个根节点；或者只销毁你不需要跨场景保留的节点，别碰那个设为常驻的广告根节点。最低改动思路（测试版）按你的使用场景，我建议先做一个“最小侵入”的测试：选定要保留的广告根节点（例如挂着 AdLoader/MDAdView 的那个 Canvas 下的某个子节点，名字假设叫 AdRoot）。在 AdLoader 中加一个属性并设置为常驻（只要你确定 AdLoader 跟 AdRoot 是同一个节点就更简单）：ts   protected onLoad(): void {
+       console.log('adLoader onload')
+
+       // 只做一次常驻设置（你可以用静态变量防重复）
+       cc.game.addPersistRootNode(this.node);
+
+       this.initQGNativeAd();
+       // ...原来的 window.Global 相关逻辑
+   }暂时注释掉 gotoGame() 里的这两行，先验证跨场景保留是否生效：ts   // this.node.removeAllChildren();
+   // this.node.parent.destroy();
+   cc.director.loadScene('Game');运行： 在 AdLoader 场景里看到广告正常渲染； 调用 gotoGame() → 进入 Game 场景； 如果你在 Game 场景里还能看到那一块广告节点（图文都在），说明常驻生效了。等你确认“跨场景不会被销毁”之后，再考虑需要不要在 Game 场景里主动隐藏 / 调整位置，那时候才需要用：tsconst adNode = cc.director.getScene().getChildByName("AdRoot");去拿引用做控制。总结一句话你现在“切换场景后还是直接销毁”的原因，不是引擎没保留，而是：你在 gotoGame() 里手动 this.node.removeAllChildren() 和 this.node.parent.destroy()，把节点先干掉了。要让它留到下一个场景：对广告根节点调用 cc.game.addPersistRootNode(广告根节点)；并且 不要再销毁这个节点或它的父节点。还是被销毁了，是不是cocos开发版本的原因还是被销毁了，是不是cocos开发版本的原因Evaluating code issuesEvaluating code issuesI’m considering a few possibilities here. Maybe they are calling the function on the wrong node or confusing it with the Editor preview. They might be using cc.director.preloadScene('Game', ...) and then calling loadScene inside the callback, but addPersistRootNode only applies after onLoad. I think it's unlikely a version bug since Cocos versions 2.0 and onward support persist nodes. I should ask to see the current code, especially around onLoad and gotoGame.我先确认一下你现在 AdLoader.ts 里具体是怎么调用 addPersistRootNode 和切场景的，看看是不是节点选错或后面又被手动销毁了。已查看AdLoader.ts(150 - 349)不是版本问题，是现在这段代码本身有两个关键点没对上，所以“看起来像是没生效”。我看到你现在的改动是这样的（AdLoader.ts 片段）：tsthis.nativeAd.onLoad((test:any) => {
+    // ...渲染广告
+    this.renderNativeAd({
+        key: 'centerNativeAdXXX', 
+        // ...
+    });
+    cc.game.addPersistRootNode(this.MD_ad)
+});问题有两个：1. 传错类型：addPersistRootNode 要的是 cc.Node，你传的是 cc.Sprite声明是：ts  @property(cc.Sprite)
+  MD_ad: cc.Sprite;这里 this.MD_ad 是一个 组件（cc.Sprite），不是节点；cc.game.addPersistRootNode 需要的是 cc.Node：ts  cc.game.addPersistRootNode(node: cc.Node)所以正确写法应该是：tscc.game.addPersistRootNode(this.MD_ad.node);现在你传的是 this.MD_ad，引擎不会把它当成持久节点处理，自然切场景就被销毁了。2. 你要确认“被销毁”的到底是哪一层节点你现在保留的是 MD_ad 这块 UI（MD_ad 节点及其子节点），不是整个 AdLoader 所在的父节点。如果 MD_ad 是你广告这一块 UI 的根节点（其他 MD_ad_img 等都在它下面），那改成 this.MD_ad.node 就够；如果广告这块结构不是以 MD_ad 为根，而是多个平级节点，那你应该选一个更大的根，比如它们共同的父节点：ts  @property(cc.Node)
+  adRoot: cc.Node = null;
+
+  // 然后：
+  cc.game.addPersistRootNode(this.adRoot);3. 是否还需要改 gotoGame一旦 addPersistRootNode 成功，那个节点会被引擎从当前场景树里“挪”到常驻根节点下：也就是说，它不再是 this.node 或 this.node.parent 的子节点；后面的 this.node.removeAllChildren() / this.node.parent.destroy() 理论上就不会再影响这个持久节点了。所以最关键的一步，先把这句改对：tscc.game.addPersistRootNode(this.MD_ad.node);如果你改完之后还是发现切到 Game 场景看不到这块广告，可以再告诉我：MD_ad 在层级面板里的结构（是不是广告那块 UI 的根节点）；切到 Game 场景时，有没有报 addPersistRootNode: Node already added 之类的警告。我可以再帮你精确到“应该对哪个节点调用 addPersistRootNode”。是node啊是node啊Simplifying technical adjustmentsSimplifying technical adjustmentsI’m focusing on minimal intrusion here. The plan is to create a new property adRoot: cc.Node, attach it, and call addPersistRootNode in onLoad, while removing the destroy function. The user’s comment "是 node" suggests they’ve already made changes. However, calling addPersistRootNode in nativeAd.onLoad might be too late, so timing could be the issue. I’ll recommend quickly confirming with console.log before and after addPersistRootNode, and mention checking scene children. But maybe I should keep it simpler—just suggest breakpoints for debugging.不是版本的问题，很大概率是“时机”和“对象”这两个点没对上。你现在的代码片段里是这样写的（我看到的版本）：tsthis.nativeAd.onLoad((test:any) => {
+    // ...渲染广告
+    this.renderNativeAd({
+        key: 'centerNativeAdXXX', 
+        // ...
+    });
+    cc.game.addPersistRootNode(this.MD_ad)   // 你说这里已经是 node 了
+});即使这里已经是 node，还有两个常见坑会导致“看起来还是被销毁”。1. 时机太晚：在 nativeAd.onLoad 里才设常驻addPersistRootNode 必须在场景被卸载之前调用。 
+你现在是在广告异步回调里调用：如果用户很快点了“进入游戏”，gotoGame() 先执行，场景切走；然后广告还没 onLoad，这行 addPersistRootNode 根本没机会跑；结果就是：场景切换时，这个节点还是普通节点，直接被销毁。所以先别纠结是不是 node，你应该把常驻的设置提前到生命周期里一个同步、必定会执行的地方，比如 onLoad 或 start：tsconst { ccclass, property } = cc._decorator;
+
+@ccclass
+export default class AdLoader extends cc.Component {
+
+    @property(cc.Node)
+    MD_ad: cc.Node = null;
+
+    private static _persistInited = false;
+
+    protected onLoad(): void {
+        console.log('adLoader onload');
+
+        // 只做一次常驻绑定
+        if (!AdLoader._persistInited) {
+            AdLoader._persistInited = true;
+            cc.game.addPersistRootNode(this.MD_ad);
+            console.log('addPersistRootNode MD_ad');
+        }
+
+        this.initQGNativeAd();
+        // ... 原有的 window.Global 事件监听 ...
+    }
+}广告图片什么时候加载完成无所谓，节点本身已经被设为常驻了，填不填图只是状态变化，不影响跨场景存在。2. 再确认三个点MD_ad 的类型和绑定代码里要写：@property(cc.Node) MD_ad: cc.Node = null;在编辑器里，给 MD_ad 拖的是一个节点，不要拖 Sprite 组件；这个节点最好是你要跨场景保留的那块广告 UI 的根节点。不要在其他地方把它 destroy 掉你 gotoGame() 里之前有：ts   this.node.removeAllChildren();
+   this.node.parent.destroy();如果 MD_ad 已经被设为常驻，addPersistRootNode 会把它从原父节点上移走挂到 persist 根节点下，这两行就不会再影响它； 
+但如果你在别的脚本里直接对 MD_ad 调了 destroy()，它还是会没。切到新场景后怎么确认它还在在 Game 场景的某个脚本 start() 里打印一下：ts   start() {
+       const node = cc.director.getScene().getChildByName("你在层级里看到的 MD_ad 节点名字");
+       console.log('Game scene find MD_ad =', node);
+   }如果这里能打印出一个有效 node，但你画面上看不到，很可能是坐标 / Canvas 层级问题，而不是被销毁了。3. 总结一下你说“是 node 啊”，那就重点看这两件事：不要在 nativeAd.onLoad 里才 addPersistRootNode，改成在 onLoad / start 里同步调用；确认 @property(cc.Node) MD_ad，编辑器里拖的是节点，且没在别的地方对它调用 destroy()。按上面那段 onLoad 改完，先不动别的逻辑试一遍： 打开 AdLoader 场景 → 广告出来或没出来都无所谓 → 直接触发 gotoGame() 看 Game 场景中是否还能找到那个 MD_ad 节点。如果你愿意，可以把现在最新的 AdLoader.ts 头部（属性定义 + onLoad + initQGNativeAd + gotoGame）贴出来，我可以按你的实际代码写一版直接可用的修改。start() {
+
+       const node = cc.director.getScene().getChildByName("你在层级里看到的 MD_ad 节点名字");
+
+       console.log('Game scene find MD_ad =', node);
+
+   }  修改为符合我目前条件的start() {
+
+       const node = cc.director.getScene().getChildByName("你在层级里看到的 MD_ad 节点名字");
+
+       console.log('Game scene find MD_ad =', node);
+
+   }  修改为符合我目前条件的Sharing code snippetAdvising on code adaptationThe user is looking to adapt a code snippet for their project. They need to identify the actual node name of the "MD_ad" node in their Scene, but I don’t have access to the scene files to check directly. Instead, I’ll suggest a general snippet to include in their HomeMain.ts to check the persistence of "MD_ad". They might need to replace the string with the correct node name after checking their hierarchy. I'll keep it concise since they asked for concrete help.Providing code snippet guidanceI can provide a snippet for the HomeMain.ts file. First, I might want to import MDAdView, but it seems that's mainly for debugging purposes. Since we don’t know the actual node name for MD_ad, we can use the property type cc.Sprite and assume the name might be 'MD_ad'. My snippet would look like this:javascriptstart() {
+  const node = cc.director.getScene().getChildByName("MD_ad");
+  cc.log('Game scene find MD_ad =', node);
+}I should also note that if it’s not found, it could be a child of the Canvas, but the persist node will be a root-level child. So, using getChildByName on the scene root is crucial for debugging.Sharing code snippetIn HomeMain.ts, the code snippet I suggest is:javascriptstart() {
+  const mdAdNode = cc.director.getScene().getChildByName("MD_ad");
+  console.log('Game scene find MD_ad =', mdAdNode);
+  if (mdAdNode) {
+    // optional: keep reference
+    this.mdAdNode = mdAdNode;
+  }
+}If the user wants to continue using MDAdView, I can provide a variant. Since they're looking for minimal modifications and no new files, I’ll just share this snippet without the need for additional tools. Let's go ahead with this response.按你现在的场景，先写一个最简单的检测版本就行，直接放在 Game 场景里的某个脚本（比如 HomeMain.ts）里，用 MD_ad 这个节点名来查：tsstart() {
+    // 这里的 "MD_ad" 用的是层级面板里这个节点的名字
+    const mdAdNode = cc.director.getScene().getChildByName("MD_ad");
+    console.log('Game scene find MD_ad =', mdAdNode);
+}说明：如果你在 AdLoader 场景 的层级面板里，这个被你 addPersistRootNode 的节点名字就是 MD_ad，那上面这段直接可用；如果层级里看到的名字不是 MD_ad，比如叫 AdRoot、MiddleAd 之类的，就把 "MD_ad" 换成真实名字：ts  const mdAdNode = cc.director.getScene().getChildByName("真实节点名");运行后控制台会输出：Game scene find MD_ad = null 
+→ 说明这个节点压根没带到 Game 场景，多半是 addPersistRootNode 没生效（时机不对 / 传的不是同一个节点）；Game scene find MD_ad = [object cc_Node] 之类 
+→ 说明节点还在，只是可能坐标 / Canvas 层级导致你画面看不到。你可以先按这个方式写到 HomeMain.ts 的 start() 里跑一遍，把日志情况告诉我，我们再根据结果判断是“没保留成功”还是“保留了但没显示出来”。Game scene find MD_ad = nullGame scene find MD_ad = nullProposing code changesAnalyzing code changesI see that for minimal change, the easiest fix is to change the addPersistRootNode line in onLoad to use .node. Previously, we discussed moving from nativeAd.onLoad to onLoad; it's important to correct that too. Since addPersistRootNode is inside nativeAd.onLoad, if gotoGame triggers before the ad loads, it won't execute. I can show a final working minimal code diff for AdLoader.ts, but I need to remember the user only asked for debugging, not a full patch.Proposing code changesThe instructions are clear: when creating or modifying code, I usually need to follow a specific format. However, since I'm just suggesting code and not altering their file, I think it's fine not to use the CODE_EDIT_BLOCK. So, I’ll provide a minimal snippet for AdLoader.ts. I plan to explain the need to remove addPersistRootNode from initQGNativeAd, comment out removeAllChildren, and parent.destroy in gotoGame for testing. I should also clarify why "Game scene finds MD_ad = null" and suggest steps to fix it.Game scene find MD_ad = null 说明一件事： 
+到 Game 场景的时候，场景根节点下根本没有叫 MD_ad 的常驻节点。 
+这基本可以确定：当前的 addPersistRootNode 还没真正把那个节点变成常驻。结合我刚刚看到的 AdLoader.ts 代码，你现在有两个问题是同时存在的：addPersistRootNode 调用时机太晚（写在 nativeAd.onLoad 里） 传入的对象不是标准写法（你说“是 node 啊”，但当前文件里 MD_ad 仍声明成 cc.Sprite）只要这两个有任意一个没对上，就会出现你现在的现象。一步一步把它改成“肯定能跑通”的版本我按你当前代码来给一个最小改动，你对照修改即可。1. 确认属性和绑定现在 AdLoader.ts 顶部是这样：ts@property(cc.Sprite)
+MD_ad: cc.Sprite;这本身没问题，但在用的时候要记得 .node。编辑器里绑定：在 AdLoader 脚本的 MD_ad 属性上，拖一个节点的 Sprite 组件上去；这个节点就是你要跨场景保留的那个广告根节点（或者那块 UI 的根节点）。2. 把 addPersistRootNode 提前到 onLoad / start不要放在 nativeAd.onLoad 回调里。改成在 onLoad 里同步执行，例如：tsconst { ccclass, property } = cc._decorator;
+
+@ccclass
+export default class AdLoader extends cc.Component {
+
+    @property(cc.Sprite)
+    MD_ad: cc.Sprite = null;
+
+    private static _persistInited: boolean = false;
+
+    protected onLoad(): void {
+        console.log('adLoader onload')
+
+        // 只做一次常驻绑定
+        if (!AdLoader._persistInited) {
+            AdLoader._persistInited = true;
+            if (this.MD_ad && this.MD_ad.node) {
+                cc.game.addPersistRootNode(this.MD_ad.node);
+                console.log('addPersistRootNode MD_ad, name =', this.MD_ad.node.name);
+            } else {
+                console.warn('MD_ad is not assigned!');
+            }
+        }
+
+        this.initQGNativeAd();
+        let vm = this;
+        if (window.Global) {
+            window.Global.isLoadScene = true;
+            window.$Evt.$on("login", (e) => { this.handleLogin(e) })
+            window.$Evt.$on("nativeAdStatusChanged", () => { this.switchBackgroundImage() })
+            window.$Evt.$on("adLoaderRenderNativeAd", (e) => { this.renderNativeAd(e) })
+            window.$Evt.$on("adLoaderHideNativeAd", (e) => { this.hideNativeAd(e) })
+            window.$Evt.$emit('sceneLoaderSuc', 1)
+        }
+    }同时删掉 / 注释掉 initQGNativeAd 里的那一行：ts// this.renderNativeAd(...);
+// cc.game.addPersistRootNode(this.MD_ad)   // 这行删掉，已经在 onLoad 里做了这样可以保证：AdLoader 一加载（场景一进来），就立刻把 MD_ad.node 提升为常驻节点；不会再依赖广告是否加载完、onLoad 回调是否被触发。3. 暂时不要在 gotoGame 里疯狂销毁你当前 gotoGame 是这样的：tsthis.node.removeAllChildren();
+this.node.parent.destroy();
+cc.director.loadScene('Game');如果 MD_ad.node 成功被设为常驻节点，addPersistRootNode 会把它从原父节点移走挂到常驻根下， 
+理论上这两句不会再影响 MD_ad。为了避免多一个变量干扰，你可以先暂时改成：ts// 先测试，不做额外销毁
+// this.node.removeAllChildren();
+// this.node.parent.destroy();
+cc.director.loadScene('Game');先确认常驻节点生效，再看要不要清理其它 UI。4. 再在 Game 场景里测试一次在 HomeMain.ts（或 Game 场景的任意脚本）里保留这段：tsstart() {
+    const mdAdNode = cc.director.getScene().getChildByName("MD_ad"); // 名字用层级里看到的节点名
+    console.log('Game scene find MD_ad =', mdAdNode);
+}然后流程：进 AdLoader 场景 → 确保控制台打印出 addPersistRootNode MD_ad, name = MD_ad 之类的日志；点击按钮触发 gotoGame() → 进入 Game 场景；看控制台：如果这次是 Game scene find MD_ad = cc_Node {...} → 说明常驻成功，只是显示问题；如果还是 null → 要么 MD_ad 没成功绑定（onLoad 里会打 MD_ad is not assigned!），要么节点名字不是 MD_ad，要对照层级实际名称改字符串。为什么之前一直是 null？总结一下关键点：你之前把 addPersistRootNode 写在 nativeAd.onLoad 回调里， 
+→ 如果广告还没成功回调，就切场景了，这行根本没执行过。从我刚才看到的 AdLoader.ts 版本，MD_ad 仍然是 cc.Sprite，而 addPersistRootNode(this.MD_ad) 没加 .node， 
+→ 即使执行了，传入的也不是 cc.Node，而是组件，行为不符合预期。Game scene find MD_ad = null 正是说明 “根本没有一个叫 MD_ad 的节点被挂到新场景根节点下”， 
+不是引擎版本问题，而是上面两点逻辑没有做到位。你可以按我上面的步骤一条条改（特别是：onLoad 里加常驻 + 去掉 initQGNativeAd 里的常驻 + 暂时注掉 gotoGame 的 destroy）， 
+改完再跑一遍，把控制台的两条日志发给我：addPersistRootNode MD_ad, name = XXXGame scene find MD_ad = XXX我可以再帮你判断下一步是处理显示问题，还是再调整结构。帮我查看一下现在修改了没有帮我查看一下现在修改了没有Inspecting code modificationsInspecting code modificationsThe user asked me to help check if the code has been modified, likely referring to "AdLoader.ts." I plan to read the current contents of that file again using the read_file tool, then I’ll report back whether the changes are correct. It feels pretty straightforward, but I want to make sure I accurately identify any modifications. Let’s make sure I’m thorough in my inspection!我来读一下当前的 AdLoader.ts，帮你确认常驻节点相关的修改有没有到位。已查看AdLoader.ts(1 - 260)现在的修改差一点就正确了，我帮你点出来需要再改两处，很快能验证成功。1. 现在的情况你当前 AdLoader.ts 关键部分是：ts@property(cc.Node)
+MD_ad: cc.Node;
+
+protected onLoad(): void {
+    console.log('adLoader onload')
+    this.initQGNativeAd();
+    cc.game.addPersistRootNode(this.MD_ad)
+
+    // ...
+}问题有两个：cc.game.addPersistRootNode(this.MD_ad) 写在 initQGNativeAd() 之后，虽然一般也会执行，但为了避免任何异步/提前切场景情况，最好放在 initQGNativeAd() 之前；你没有加判空和“只初始化一次”的保护，如果未来重复进入 AdLoader 场景，会报“node has been added as a persistent root node”。但最关键的是：如果编辑器里 MD_ad 没拖对节点，这里还是等于没做。2. 推荐你改成这样（直接可用版本）在现有基础上，轻微调整：tsconst { ccclass, property } = cc._decorator;
+let isLogin = false
+
+@ccclass
+export default class AdLoader extends cc.Component {
+
+    @property(cc.Node)
+    MD_ad: cc.Node = null;
+
+    private static _persistInited: boolean = false;
+
+    protected onLoad(): void {
+        console.log('adLoader onload')
+
+        // 先做常驻绑定，再做其他初始化
+        if (!AdLoader._persistInited) {
+            AdLoader._persistInited = true;
+            if (this.MD_ad) {
+                cc.game.addPersistRootNode(this.MD_ad);
+                console.log('addPersistRootNode MD_ad, name =', this.MD_ad.name);
+            } else {
+                console.warn('MD_ad is not assigned!');
+            }
+        }
+
+        this.initQGNativeAd();
+
+        let vm = this;
+        if (window.Global) {
+            window.Global.isLoadScene = true;
+            window.$Evt.$on("login", (e) => { this.handleLogin(e) })
+            window.$Evt.$on("nativeAdStatusChanged", () => { this.switchBackgroundImage() })
+            window.$Evt.$on("adLoaderRenderNativeAd", (e) => { this.renderNativeAd(e) })
+            window.$Evt.$on("adLoaderHideNativeAd", (e) => { this.hideNativeAd(e) })
+            window.$Evt.$emit('sceneLoaderSuc', 1)
+        }
+    }你需要做的就是把 onLoad 里的顺序和内容改成这一版。3. 编辑器里再确认一次绑定在 Cocos Creator 编辑器里：选中挂有 AdLoader 的节点（应该是 AdLoader 场景的某个根/子节点）；检查 Inspector 上的 MD_ad 属性：确认已经拖了一个节点过去（不是空的）；这个节点的名字，和你在 Game 场景里 getChildByName("XXX") 想查的名字是一致的（比如都是 MD_ad）。4. 再跑一次测试重新运行游戏，打开 AdLoader 场景；看控制台日志：应该能看到：addPersistRootNode MD_ad, name = MD_ad 或类似内容；如果看到 MD_ad is not assigned!，说明编辑器没绑定好节点。再触发 gotoGame()，进入 Game 场景，查看你在 Game 场景里打印的那行：tsconst node = cc.director.getScene().getChildByName("MD_ad");
+console.log('Game scene find MD_ad =', node);这次如果不是 null，说明常驻生效了。如果你愿意，我可以给你一段完整的 AdLoader.ts 修改片段（只改 onLoad 部分），你直接复制粘贴替换就行。帮我修改，最小限度的修改帮我修改，最小限度的修改好的,我现在帮你做最小限度的修改,只改 onLoad 里的顺序和加保护逻辑。‎AdLoader.ts+1M已应用已查看AdLoader.ts(169 - 368)‎AdLoader.ts+12-1M已应用完成！修改已经成功。这些 TypeScript 类型错误是原本就存在的（window.Global、window.$Evt 等没有类型定义），不影响运行，我们不用管它。现在修改的关键点：✅ 在类顶部添加了静态变量 private static _persistInited: boolean = false;✅ 把 addPersistRootNode 移到 initQGNativeAd() 之前✅ 加了判空保护和只初始化一次的逻辑✅ 添加了日志输出，方便你看节点名和是否成功现在你可以测试了：运行游戏，进入 AdLoader 场景看控制台，应该会打印：addPersistRootNode MD_ad, name = XXX（XXX 是你节点的名字）如果是 MD_ad is not assigned!，说明编辑器里没拖节点触发 gotoGame()，切换到 Game 场景在 Game 场景里（比如 HomeMain.ts 的 start）打印：tsconst node = cc.director.getScene().getChildByName("MD_ad");
+console.log('Game scene find MD_ad =', node);
+如果这次不是 null，说明常驻成功了！如果还是 null，把两个场景的日志都发给我，我再帮你排查。我看到日志了，关键问题是：根本没有看到 addPersistRootNode MD_ad, name = XXX 这行日志。这说明：tsif (this.MD_ad) {
+    cc.game.addPersistRootNode(this.MD_ad);
+    console.log('addPersistRootNode MD_ad, name =', this.MD_ad.name);
+} else {
+    console.warn('MD_ad is not assigned!');
+}这段代码要么：没有执行（_persistInited 已经是 true）this.MD_ad 是 null/undefined，进了 else 分支（但你日志里也没看到 MD_ad is not assigned!）最可能的原因：编辑器里 MD_ad 属性没有绑定节点你需要在 Cocos Creator 编辑器里检查：打开 adLoader.fire 场景选中挂有 AdLoader 脚本的节点在 Inspector 面板里找到 MD_ad 属性确认这个属性上是否拖了一个节点如果是空的（None），就把你想要跨场景保留的那个广告节点（层级面板里的节点）拖到这个 MD_ad 属性上。为了确认到底是哪种情况，我帮你在代码里加一行强制日志，无论如何都会打印出来：‎AdLoader.ts+1M已应用好，已经加了一行强制日志。现在再运行一次，你会在 adLoader onload 后面立刻看到一行：plaintextAdLoader._persistInited = false , this.MD_ad = null或者plaintextAdLoader._persistInited = false , this.MD_ad = <cc.Node: 名字>把这行日志发给我，我就能判断是：this.MD_ad = null → 编辑器里没绑定节点，需要你在编辑器里拖节点到 MD_ad 属性上this.MD_ad = <cc.Node> → 节点绑定了，但可能是其他逻辑问题你先跑一次，把这行新日志截图或文字发给我。完美！日志显示：plaintextAdLoader._persistInited = false , this.MD_ad = [object Object]
+addPersistRootNode MD_ad, name = m-t-ad这说明：✅ this.MD_ad 已经绑定了节点（[object Object] 就是一个 cc.Node 对象）✅ 节点名字是 m-t-ad✅ addPersistRootNode 已经成功调用了现在节点应该已经设为常驻了。接下来你需要在 Game 场景里验证一下它是否真的被保留了。在 Game 场景里添加验证代码你需要在 HomeMain.ts 的 start() 方法里加一行日志，注意节点名字要改成 m-t-ad（不是之前说的 MD_ad）：已查看HomeMain.ts我看到你已经在 HomeMain 的 onLoad 里加了验证代码，但节点名字不对。应该改成 m-t-ad（因为日志显示的节点名是 m-t-ad，不是 MD_ad）：‎HomeMain.ts+2-2M已应用完成！现在你可以再跑一次：进入 AdLoader 场景（会看到 addPersistRootNode MD_ad, name = m-t-ad）触发 gotoGame()，切到 Game 场景看 HomeMain 的 onLoad 日志：如果打印 Game scene find m-t-ad = null → 常驻没生效如果打印 Game scene find m-t-ad = <cc.Node> → 常驻成功了！把新的日志截图发给我，如果是成功的，我们就可以确认跨场景保留节点已经实现了。看到了！关键日志是：plaintextGame scene find m-t-ad = null说明节点还是没有被保留到 Game 场景。结合两张图的日志，我发现一个非常关键的问题：问题所在：gotoGame() 里手动销毁了父节点看第二张图的日志顺序：AdLoader._persistInited = false , this.MD_ad = [object Object] ✅addPersistRootNode MD_ad, name = m-t-ad ✅然后切场景Game scene find m-t-ad = null ❌虽然 addPersistRootNode 成功了，但你现在的 gotoGame() 里还有这两行：tsthis.node.removeAllChildren();
+this.node.parent.destroy();如果 m-t-ad 节点在调用 addPersistRootNode 之前，还挂在 this.node 或 this.node.parent 下面，这两句会在场景切换前先把节点强制销毁。addPersistRootNode 的作用是把节点从原来的父节点移到常驻根节点下，但如果在 loadScene 之前你就把它的整个父节点树 destroy() 了，节点还是会没。解决办法：暂时注释掉这两句我帮你把 gotoGame() 里的销毁逻辑先注释掉，验证常驻节点是否生效：已查看AdLoader.ts(485 - 543)好，我看到你已经把这两句注释掉了：ts// this.node.removeAllChildren();
+// this.node.parent.destroy();但从你刚才的日志来看，还是 null。这说明可能还有其他问题。再排查一个可能：m-t-ad 节点的位置addPersistRootNode 要求传入的节点必须是场景根节点的直接子节点，或者至少是一个独立的根节点。如果 m-t-ad 是嵌套在很深的层级里（比如 Canvas → 某个父节点 → m-t-ad），引擎可能无法正确处理。验证方法：在 AdLoader 场景里，打开 Cocos Creator 编辑器的 层级面板（Hierarchy），找到 m-t-ad 这个节点，看它的父节点是什么。最理想的情况是：plaintextCanvas (场景根节点)
+  ├─ m-t-ad  ← 这样最好
+  └─ 其他节点如果是这样：plaintextCanvas
+  ├─ SomeParent
+  │   └─ m-t-ad  ← 嵌套太深那你需要：要么把 m-t-ad 提到 Canvas 的直接子节点；要么对它的父节点调用 addPersistRootNode（把整块 UI 一起保留）。或者：直接对更高层级的节点调用 addPersistRootNode如果你不方便调整层级，可以试试对 m-t-ad 的父节点做常驻。你可以先告诉我：在 AdLoader 场景的层级面板里，m-t-ad 的完整路径是什么？（比如 Canvas/AdRoot/m-t-ad）或者截图一下 AdLoader 场景的层级面板，我帮你判断应该对哪个节点调用 addPersistRootNode。这样我可以给你最精确的修改方案。还是null还是null还是 null 说明 addPersistRootNode 虽然调用了，但节点没有真正被保留到新场景。最可能的原因是：m-t-ad 节点的层级位置不对，或者它的父节点在场景切换时被销毁了。我帮你加一段更详细的调试日志，看看 addPersistRootNode 调用后节点的父节点是什么，以及是否真的被移到了常驻根节点下：‎AdLoader.ts+3-5M已应用好，已经加了调试日志。现在再跑一次，你会看到两行新日志：plaintext[Before addPersistRootNode] node name = m-t-ad , parent = XXX
+[After addPersistRootNode] node name = m-t-ad , parent = YYY这两行会告诉我们：Before：调用前，m-t-ad 的父节点是谁After：调用后，m-t-ad 的父节点变成了谁（如果成功，应该会变成 PersistNode 或类似的常驻根节点）如果 After 的 parent 还是原来的父节点名字（比如 Canvas 之类），说明 addPersistRootNode 根本没生效。把这两行日志发给我，我能判断出问题到底在哪。
+
+
+
+
+
+
+
+
+
+
+
+我将为您查找快游戏广告 UX 页面的相关代码和配置。首先，我将查看您当前打开的 AdLoader.ts 文件，并搜索项目中与“广告”、“UX”或“UI”相关的资源和脚本。
+已探索
+1检索
+在本项目中，快游戏广告 UX 页面（通常指快游戏规范要求的广告展示及隐私协议合规页面）主要由以下两个部分组成：
+1. 核心场景与脚本
+场景文件: assets/Scene/adLoader.fire
+这是专门用于加载广告和展示隐私合规逻辑的场景。
+关联脚本: assets/Script/AdLoader.ts
+该脚本负责控制该页面的所有逻辑，包括：
+隐私协议弹窗: privacyAgreePop（同意弹窗）和 privacyDetailPop（详情弹窗）。
+原生广告渲染: 页面中预留了四个位置（左上 LT_ad、右上 RT_ad、左下 LB_ad、右下 RB_ad）用于展示原生广告。
+背景切换: 通过 switchBackgroundImage 随机切换背景素材。
+2. 游戏内的广告组件
+除了独立的加载页面外，在游戏主界面中也集成了符合快游戏规范的广告 UX 组件：
+脚本文件: assets/Script/UIManager/GameMain5/GameMain5.ts
+功能: 在游戏内部有一个 ad_info (cc.Mask) 节点，用于展示原生广告（包含广告标题、来源、开发者信息、版本号等），这通常是快游戏审核要求的“原生广告展示规范”。
+总结
+如果您需要修改广告 UX 页面的布局或逻辑，请重点查看：
+assets/Scene/adLoader.fire: 使用 Cocos Creator 编辑器打开此场景，可以直观地修改 UI 布局。
+assets/Script/AdLoader.ts: 修改广告请求、上报逻辑及隐私协议的交互逻辑。
+此外，项目中的 assets/Script/Ctrl/SdkCtrl.ts 负责底层 SDK 的对接（如激励视频、Banner 等），但具体的 UX 展现形式（即您看到的广告页面）主要在上述的 AdLoader.ts 中实现。
+广告是怎么被请求填充进来的
+广告是怎么被请求填充进来的
+Analyzing Ad Network Usage
+我将为您详细分析广告请求与填充的流程。根据代码分析，广告的请求和填充主要通过全局广告网络管理对象 ($AdNet) 和 事件系统 ($Evt) 协作完成。以下是具体的实现逻辑：
+1. 广告请求的触发
+在 assets/Script/UIManager/GameMain5/GameMain5.ts 中，可以看到请求逻辑：
+typescript
+async initAd() {
+    console.log('[initAd]')
+    window.$AdNet.loadAd(0); // 请求类型为 0 的广告
+    setTimeout(() => {
+        nativeAd = window.$AdNet.getAd(2); // 获取类型为 2 的原生广告
+        // ... 如果没有则继续尝试 loadAd(2)
+    }, 500)
+}
+请求: 调用 window.$AdNet.loadAd(type)。这通常会调用各平台（如华为、OPPO、vivo 等快游戏）的底层 SDK 接口。
+获取: 使用 window.$AdNet.getAd(type) 获取已经加载好的广告对象。
+2. 广告数据的填充 (UI 渲染)
+广告请求成功后，数据通过事件分发到 UI 组件进行填充。以 AdLoader.ts 为例：
+(1) 监听填充事件
+在 AdLoader.ts 的 onLoad 中，它监听了渲染事件：
+typescript
+window.$Evt.$on("adLoaderRenderNativeAd", (e) => { this.renderNativeAd(e) })
+(2) 执行填充逻辑
+当接收到 e（广告数据对象）时，renderNativeAd 方法会将数据映射到场景节点上：
+typescript
+public renderNativeAd(e) {
+    let o = this.renderMapping[e.key]; // e.key 可能是 'topNativeAd', 'centerNativeAd' 等
+    this[o.title].string = e.title || '';     // 填充标题
+    this[o.source].string = e.source || '';   // 填充来源
+    this[o.adid].string = (e.developerName || '') + (e.versionName || ''); // 填充开发者信息
+    this[o.adbtxt].string = e.clickBtnTxt || ''; // 填充按钮文字
+    this.loadPics(e.imgUrlList?.[0], o.img);  // 异步加载并填充广告图片
+    this[o.box].node.active = true;           // 显示广告位
+}
+3. 图片的异步加载
+由于广告图片通常是远程 URL，代码使用了 cc.assetManager.loadRemote 来加载：
+typescript
+loadPics(remoteUrl, key) {
+    cc.assetManager.loadRemote<cc.Texture2D>(remoteUrl, { ext: '.image' }, (err, texture) => {
+        if (!err) {
+            const spriteFrame = new cc.SpriteFrame(texture);
+            this[key].spriteFrame = spriteFrame; // 将下载好的图片赋给 Sprite
+        }
+    });
+}
+关键组件总结
+请求源: 由 window.$AdNet 统一管理，负责对接快游戏平台的 qg.createNativeAd 等底层 API。
+数据中转: 通过 window.$Evt 全局事件中心发送广告数据。
+UI 承载: AdLoader.ts 或 GameMain5.ts 中的相关属性（@property）绑定了场景中的 Label 和 Sprite，负责最终展示。
+如果您想查看 $AdNet 的具体实现细节（例如它是如何调用快游戏 API 的），我需要为您查找定义该对象的脚本文件（通常在 Manager 目录下）。需要我继续深入查找吗？
+这里有几个测试广告位id？在哪里看得到
+这里有几个测试广告位id？在哪里看得到
+Searching Ad Configurations
+我将为您查找项目中定义的广告位 ID。目前在代码中主要发现了两套广告位 ID，分别对应不同的平台：
+1. 微信平台 (WeChat) 广告位 ID
+在 assets/Script/Ctrl/SdkCtrl.ts 中，定义了微信环境下的广告位：
+广告类型	变量名	广告位 ID (AdUnitId)
+激励视频	rewardedVideoAdID	adunit-ef62247b1cf85b5a
+Banner 广告	bannerVideoAdID	adunit-bd084cb9ff0cbf42
+插屏广告	interstitialAdID	adunit-c1433f9539ef9750
+原生模板 (左)	leftCustomAdID	adunit-984e1f76bbd3f96f
+原生模板 (右)	rightCustomAdID	adunit-a6008edaabfea273
+五行格子广告	flveCustomAdID	adunit-e36d329eb3a45430
+2. 快游戏 (华为/OPPO/vivo 等) 广告位 ID
+对于快游戏平台，广告位 ID 通常通过 $AdNet 管理器动态获取，或者配置在 manifest.json 或专门的配置文件中。我将为您搜索这类平台的具体配置位置：
+在本项目中，广告位 ID 的配置主要分为两个部分：
+1. 微信平台 (WeChat) - 静态 ID
+在 assets/Script/Ctrl/SdkCtrl.ts 中可以看到硬编码的微信测试/正式广告位 ID：
+激励视频: adunit-ef62247b1cf85b5a
+Banner: adunit-bd084cb9ff0cbf42
+插屏: adunit-c1433f9539ef9750
+原生模板 (左): adunit-984e1f76bbd3f96f
+原生模板 (右): adunit-a6008edaabfea273
+五行格子广告: adunit-e36d329eb3a45430
+2. 快游戏平台 (华为/OPPO/vivo 等) - 动态配置
+对于快游戏平台，广告位 ID 并不是写死在本地脚本里的，而是通过云端配置下发的。具体逻辑如下：
+加载逻辑: 在 build-template/huawei/sdk.umd.min.js (或其源码对应的 Manager) 中，通过 getAdNetConfig() 方法请求云端。
+云端请求:
+请求地址: https://adnet4-go.muchcloud.com/adNet/getV3
+这个请求会返回一个包含广告位 ID 的加密 JSON 数据（DATA 字段）。
+解析填充:
+代码会调用 mt(t.DATA)（AES 解密）来获取真正的配置数据。
+解密后的数据中包含 aiidList 和 adStorey 等信息，里面存放了对应的 adid（即广告位 ID）。
+这些 ID 随后被存入 At.GetInstance().storeyData 并在请求广告时使用。
+在哪里能“看到”它们？
+本地查看: 如果您是想找本地可直接修改的 ID，目前只有 SdkCtrl.ts 中的微信 ID 是直观可见的。
+快游戏 ID: 由于快游戏 ID 是动态下发的，如果您需要查看或修改，通常需要：
+在 管理后台（云端配置平台）查看。
+或者在代码中通过 console.log 打印解密后的 t 对象（在 getAdNetConfig 方法的 then 回调里）。
+提示: 在 sdk.umd.min.js 的源码部分，解密用的 Key 是 M%4UoWkgHhQ#iPVn，IV 是 9apYh^I2^ukRQ!Sd。这是典型的通过云端控制多平台广告位 ID 的架构。
+华为快游戏测试广告位该怎么放
+华为快游戏测试广告位该怎么放
+Refining Implementation Strategy
+在华为快游戏（Huawei Quick Game）中进行测试时，华为官方提供了专门的测试广告位 ID。由于本项目采用了云端配置下发广告 ID 的架构（通过 $AdNet），直接修改云端配置可能比较麻烦。针对您当前的测试性构建需求，建议通过以下两种方式快速放置华为测试广告位：
+1. 华为官方提供的测试 ID 列表
+在代码中使用以下 ID 替换正式 ID 即可进入测试模式：
+广告类型	测试广告位 ID (AdUnitId)
+激励视频	testw6vs28auh3
+Banner 广告	testb65cz777y4
+插屏广告	testz3sh7v5901
+原生广告	testu7m3q99e98
+2. 实施方案：在 SdkCtrl.ts 中添加华为分支
+目前您的 SdkCtrl.ts 主要处理了微信平台。您可以仿照微信的逻辑，为华为（快游戏）添加分支。华为快游戏环境通常会注入 qg 对象。
+SdkCtrl.ts
+// ... existing code ...
+    private flveCustomAdID: string = "adunit-e36d329eb3a45430"
+    // 华为测试 ID 
+    private hwRewardedVideoAdID: string = "testw6vs28auh3" 
+    private hwBannerAdID: string = "testb65cz777y4"
+
+    public rewardedVideoAd: any = null;
+// ... existing code ...
+    private _init() {
+        if (GameData.getPlatform() == Platform.wx) {
+            // ... 微信初始化逻辑 ...
+        } else if (typeof qg !== 'undefined' && qg.createRewardedVideoAd) {
+            // 华为/快游戏环境初始化测试广告
+            this.rewardedVideoAd = qg.createRewardedVideoAd({
+                adUnitId: this.hwRewardedVideoAdID
+            });
+            this.rewardedVideoAd.onError(err => {
+                console.log("华为激励视频错误: ", err);
+            });
+            // ... 绑定 onClose 等回调逻辑 (参考微信写法) ...
+        }
+    }
+
+    ShowRewardedVideoAd(successFun: Function, failFun: Function = () => { }) {
+        if (typeof qg !== 'undefined') {
+            // 华为显示逻辑
+            this.rewardedVideoAd.show().catch(() => {
+                this.rewardedVideoAd.load().then(() => this.rewardedVideoAd.show());
+            });
+            // 处理回调...
+            return;
+        }
+        switch (GameData.getPlatform()) {
+// ... existing code ...
+3. 如果您想强制修改 AdLoader 中的原生广告
+如果您是想在加载页（AdLoader.ts）测试原生广告展示，可以在 renderNativeAd 之前手动拦截数据：
+AdLoader.ts
+// ... existing code ...
+    public renderNativeAd(e) {
+        console.log('[renderNativeAd]', e.key)
+        
+        // 测试性拦截：如果是华为环境且在测试，强制使用测试数据
+        if (typeof qg !== 'undefined' && window.DEBUG_MODE) {
+            e.title = "测试广告标题";
+            e.source = "华为测试";
+            e.clickBtnTxt = "立即下载";
+            // e.imgUrlList = ["测试图片地址"];
+        }
+
+        if(e.key != 'pullNativeAd') {
+// ... existing code ...
+注意事项
+无需申请: 华为测试 ID 是通用的，不需要在华为开发者联盟后台创建即可直接使用。
+环境要求: 必须在华为快游戏调试器或华为手机真机环境中运行，浏览器（H5）无法展示这些广告。
+打包配置: 确保 manifest.json 中已经声明了广告相关权限（通常在 features 中包含 service.ad）。
+您是希望我帮您写一份完整的华为平台适配代码到 SdkCtrl.ts 中，还是只需要了解这些 ID 的配置位置？

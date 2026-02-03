@@ -1,0 +1,1099 @@
+## MynativeAd是创建的广告对象吧，他不会自动销毁，只能调用dextory销毁，需要push进去的需要是广告对象而且不是里面的数据吧，而且后续的渲染都最好是用他引用的拷贝，而不是他的深拷贝吧？
+
+我先在项目脚本里搜索 MynativeAd 和广告相关代码，看它是如何创建、管理和销毁的，再结合你的问题给出具体建议。
+已探索
+1文件 1检索
+
+
+
+
+先结合你现在的代码和常见的 qg 原生广告规则，把几个点拆开说一下：
+1. MynativeAd 是什么？会不会自动销毁？
+ts
+let MynativeAd = qg.createNativeAd({
+    adUnitId: adUnitId,
+    ...
+});
+MynativeAd 确实是「广告实例对象」，里面挂着 load / onLoad / onError / destroy / reportAdShow / reportAdClick 之类的方法。
+一般 SDK 文档都会写得很清楚：不会自动销毁，用完需要你自己调用 MynativeAd.destroy()。
+你当前代码里没有把 MynativeAd 存到任何全局/成员变量里，所以如果不主动 destroy()，它会一直活到 GC 回收（取决于 SDK 的实现），这是你担心的点。
+2. window['loadNativeAd'] 里应该存什么？对象还是数据？
+结合你现在这段：
+ts
+MynativeAd.onLoad(function (test:any) {
+    ...
+    let adData = test.adList[0];
+    ...
+    window['loadNativeAd'].push(adData);
+});
+以及项目里对广告系统的设计记忆（loadNativeAd 作为全局广告数据池，用于 prefab 工厂创建多个独立实例）：
+这个全局数组的职责是：存储可渲染的数据（data），不是 SDK 的原生对象。
+这样做有几个好处：
+UI 逻辑只依赖「纯数据」，不依赖平台的 qg 对象，解耦。
+可以很方便地克隆数据，多处复用（一个广告数据生成多个预制体）。
+全局变量里只放 JSON-like 数据，序列化、调试都简单。
+所以，不需要把 MynativeAd 本身 push 进去，保持现在 push adData 的方向是对的。
+如果未来你要做「点击上报」之类，要用到原始的 MynativeAd 实例，可以另外设计一个管理器，比如：
+ts
+window['nativeAdStore'].push({
+    adId,
+    data: adData,
+    nativeAd: MynativeAd,
+});
+但那是另一层管理，不应该和「纯数据池」混在一起。
+3. MynativeAd 的销毁应该怎么做？
+既然你是自渲染（拿数据自己画 UI），通常流程是：
+MynativeAd.load() → onLoad 拿到 test.adList[0] 的数据。
+把数据 adData 存到 window['loadNativeAd']。
+如果之后不再需要用这个 MynativeAd 对象（比如不通过它再 load / 不再调用它的方法），可以在合适时机直接 MynativeAd.destroy()。
+一个简单的做法是：就在 onLoad 末尾或 onError 里把它调用掉：
+ts
+MynativeAd.onLoad(function (test:any) {
+    ...
+    window['loadNativeAd'].push(adData);
+    ...
+    MynativeAd.destroy(); // 如果之后不需要这个实例了
+});
+MynativeAd.onError(function (test) {
+    ...
+    MynativeAd.destroy(); // 出错也手动销毁
+});
+这样既不把 MynativeAd 存到数组里，又保证生命周期干净，符合你「不会自动销毁、要自己 destroy」的理解。
+4. 后续渲染用引用拷贝还是深拷贝？
+我们区分一下：
+MynativeAd 对象：这是 SDK 的实例对象，不应该深拷贝，甚至也不适合随便拷贝引用到一堆地方（容易乱掉生命周期）。通常是「谁创建谁管理销毁」。
+adData（test.adList[0]）这种纯数据对象：
+如果 UI 只是读取字段，不会改它，那么直接用同一个引用就够了（连浅拷贝都不必）。
+如果你担心某个 prefab 会改数据（比如给它加临时字段），最简单的做法是 浅拷贝 一份用于渲染：
+ts
+  const renderData = { ...adData };  // 这是浅拷贝，不是深拷贝
+- 这样不会影响原始 adData，但也不会有深拷贝的性能开销。
+内部的数组（比如 imgUrlList）仍然是引用同一个，但一般我们不会去修改这些数组本身，所以没问题。
+所以，不需要做深拷贝（JSON.parse(JSON.stringify(...)) 那种），会额外浪费性能；按你的说法，「用它引用的拷贝」理解为浅拷贝/同一份引用就行，足够简单和安全。
+总结一下用你现在的设计来回答你的三问：
+MynativeAd 是广告对象，确实不会自动销毁，要你调用 destroy。
+window['loadNativeAd'] 里按你的架构设计，应该放广告数据（adData），不是 MynativeAd 实例本身，这样后续 prefab 自己用这些数据来渲染。
+后续渲染时，用同一个 adData 引用，或者简单的浅拷贝 {...adData} 就够了，完全不需要深拷贝；MynativeAd 自身不要到处拷贝引用，谁创建谁管理，合适的时候 destroy() 掉。
+如果你愿意，我可以帮你基于现在这段 createNativeAd 写一个最小改动的版本：既保留只存数据的全局数组，又在合适时机调用 destroy()，保证没有泄漏。
+
+## 那要如何找到我要销毁的对象呢，如果我这预制体点击关闭才销毁渲染他的对象
+
+我去项目里搜一下哪里用到了 loadNativeAd / 原生广告预制体，看看当前是怎么取和销毁对象的，然后基于你的规范给出一个最小改动方案。
+已探索
+1文件 1检索
+关键点是：在创建预制体的时候，把对应的 MynativeAd 引用一并传进预制体脚本里保存起来，这样预制体自己就能在关闭时拿到这个对象并 destroy()，不需要再到全局去“反查”。结合你现在的结构，我给你一个尽量小改动、符合你那三条规范的思路：
+1. 在全局存的是「广告对象 + 数据」而不是只有数据
+现在：
+ts
+MynativeAd.onLoad(function (test:any) {
+    ...
+    let adData = test.adList[0];
+    ...
+    window['loadNativeAd'].push(adData);
+});
+按你项目规则，应该改成存广告实例本身，同时带上它的数据：
+ts
+MynativeAd.onLoad((test: any) => {
+    if (!test.adList || test.adList.length === 0) { ... }
+
+    const adData = test.adList[0];
+
+    window['loadNativeAd'].push({
+        nativeAd: MynativeAd, // 广告对象
+        data: adData          // 渲染要用的数据（引用/浅拷贝皆可）
+    });
+});
+这样之后从 window['loadNativeAd'] 取出时，就能拿到对应的 nativeAd。
+2. AdData 里存整个广告信息（包含 nativeAd）
+现在 AdData 的池子里只有纯数据，还做了深拷贝：
+ts
+interface AdInfo {
+    data: any;
+    used: boolean;
+}
+
+add(data: any) {
+    let copiedData = JSON.parse(JSON.stringify(data));
+    this._pool.push({ data: copiedData, used: false });
+}
+可以改成让 AdInfo 带上广告对象，并且不要深拷贝（符合“引用拷贝不做深拷贝”）：
+ts
+interface AdInfo {
+    nativeAd: any; // MynativeAd
+    data: any;     // 渲染数据（用引用或浅拷贝）
+    used: boolean;
+}
+addFromWindow 改成直接接这个结构：
+ts
+addFromWindow(): any {
+    const arr = window['loadNativeAd'] as any[];
+    if (arr.length > 0 && this._pool.length < 4) {
+        const info = arr.pop();              // { nativeAd, data }
+        this._pool.push({ ...info, used: false });
+        return info;
+    }
+    console.warn("[AdData] 没有可用数据");
+    return null;
+}
+acquire 不再深拷贝，直接返回引用（或者只对 data 做浅拷贝）：
+ts
+acquire(): AdInfo | null {
+    for (const item of this._pool) {
+        if (!item.used) {
+            item.used = true;
+            return item;   // 返回 { nativeAd, data, used }
+        }
+    }
+    console.warn("[AdData] 没有可用数据");
+    return null;
+}
+create 里拿到的是整个 AdInfo：
+ts
+const adInfo = data || this.acquire();
+if (!adInfo) { ... }
+
+const node = instantiate(prefab);
+...
+const comp = node.getComponent('Prefabload') as any;
+comp?.init?.(adInfo);  // 直接把 { nativeAd, data } 丢进去
+3. 预制体关闭时如何找到要销毁的 MynativeAd？
+关键就在于上面的 init(adInfo)——在预制体脚本里，把 nativeAd 存起来：
+ts
+// Prefabload.ts 伪代码
+export class Prefabload extends Component {
+    private nativeAd: any;
+    private data: any;
+
+    init(info: { nativeAd: any; data: any }) {
+        this.nativeAd = info.nativeAd;
+        this.data = info.data;      // 用来渲染 UI
+        this.refreshUI(this.data);
+    }
+
+    refreshUI(data: any) {
+        // 根据 data 渲染图片、标题等
+    }
+
+    onClickClose() {
+        // 1. 销毁广告对象
+        if (this.nativeAd) {
+            this.nativeAd.destroy();   // 手动销毁，符合规范
+            this.nativeAd = null;
+        }
+
+        // 2. 销毁预制体节点本身
+        this.node.destroy();
+    }
+}
+这样一来：
+MynativeAd 在创建的时候就跟某个广告预制体绑定了；
+预制体点击关闭时，直接用 this.nativeAd 就能精确销毁当前这一个广告实例；
+不用再去全局数组里查，也不用管是第几个，逻辑最简单。
+总结对应你的问题
+那要如何找到我要销毁的对象呢，如果我这预制体点击关闭才销毁渲染他的对象
+流程可以是：
+createNativeAd → onLoad 时，把 { nativeAd: MynativeAd, data } 丢进 window['loadNativeAd']。
+AdData.addFromWindow / acquire / create 把这个结构传到预制体的 init(info)。
+预制体脚本里用 this.nativeAd = info.nativeAd 保存引用。
+预制体关闭按钮回调里：
+this.nativeAd.destroy() 释放 SDK 广告对象；
+然后 this.node.destroy() 销毁渲染它的预制体。
+这样「要销毁的对象」就是挂在这个预制体组件上的 this.nativeAd，始终一一对应，不会搞混。
+如果你愿意，我可以按你当前文件实际代码，直接给出 loginCanvas.ts 和 AdData.ts 的具体修改版，照着粘即可。
+prefabload.ts 70-70
+ 销毁也会强制销毁__poll中的对象吗
+prefabload.ts 70-70
+ 销毁也会强制销毁__poll中的对象吗
+Analyzing object destruction
+我先看一下 prefabload.ts 的完整实现，确认 nativeAd 和数据池（pool）之间的关系，再回答销毁调用对池中对象的影响。
+已查看
+prefabload.ts
+不会，它只会销毁 SDK 那个广告实例本身，不会“强制删掉” _pool（你说的 __poll）里的对象。分开来看一下：
+Prefabload 里这句：
+ts
+close() {
+    this._nativeAd?.destroy();
+    this.node.destroy();
+}
+- this._nativeAd 是你在 init({ data, nativeAd }) 里传进来的那个广告对象引用；
+destroy() 是调用 SDK 提供的销毁接口，释放这一个广告实例对应的原生资源。
+AdData 里的 _pool 是这样定义的（当前代码）：
+ts
+interface AdInfo {
+    data: any;
+    used: boolean;
+}
+
+private _pool: AdInfo[] = [];
+_pool 只存了 data 和 used，根本没有存 _nativeAd 引用。
+换句话说：
+_pool 里的对象就是 JS 的普通数据（你从 window['loadNativeAd'] pop 出来的 adData 的深拷贝）；
+this._nativeAd?.destroy() 不会去动 _pool 数组，也不会自动把那条数据删掉或标记 unused。
+即使你后面把 _pool 扩展成 { data, nativeAd, used } 这种结构，this._nativeAd.destroy() 也只是对「这个 nativeAd 实例」调用方法，不会自动改 _pool，除非你自己在代码里写逻辑，比如：
+ts
+close() {
+    this._nativeAd?.destroy();
+    this._nativeAd = null;
+    // 这里如果你想同时更新数据池，需要显式去改 AdData 里的 used/清理引用
+    this.node.destroy();
+}
+所以，回答你的具体问题：
+会销毁 nativeAd 对应的广告实例（符合“广告对象需手动销毁”的规范）。
+不会自动删除或修改 _pool（数据池）中的对象；数据池的生命周期、状态标记还是要由 AdData 自己管理。
+数据现在为什么填充不上去了？检查我最新修改的代码
+数据现在为什么填充不上去了？检查我最新修改的代码
+Inspecting code modifications
+我先全局查一下你修改过的原生广告相关代码（loginCanvas、AdData、prefabload 及其调用处），看数据流哪里断了，为什么传不到 prefab。
+已探索
+2文件 1检索
+问题就在字段名对不上，导致 Prefabload.init 拿到的 data 是 undefined，所以直接 return 没有填充任何内容。
+1. 现在的实际数据流长这样
+登录页加载广告时：
+ts
+// loginCanvas.ts
+MynativeAd.onLoad(function (test:any) {
+    ...
+    let adData = test.adList[0];
+    ...
+    window['loadNativeAd'].push({MynativeAd, adData});
+});
+→ 这里往 window['loadNativeAd'] 里塞的是：
+ts
+{ MynativeAd: ..., adData: ... }
+主界面里用 AdData 拉数据：
+ts
+// AdData.ts
+addFromWindow(): any {
+    const data = window['loadNativeAd'];
+    if (data.length > 0 && this._pool.length < 4) {
+        let info = data.pop();          // { MynativeAd, adData }
+        this._pool.push({ ...info });   // 仍然是 { MynativeAd, adData }
+        return info;
+    }
+}
+
+acquire(): any {
+    if (this._pool.length > 0)
+        return this._pool.pop();        // 返回 { MynativeAd, adData }
+}
+
+create(...) {
+    const adData = data || this.acquire();
+    ...
+    const comp = node.getComponent('Prefabload') as any;
+    comp?.init?.(adData);               // 把 { MynativeAd, adData } 传给 init
+}
+预制体里解构：
+ts
+// prefabload.ts
+init({ nativeAd, data }) {
+    this._data = data;
+    this._nativeAd = nativeAd;
+    if (!data) return;
+
+    // 填充 UI...
+}
+因为传进来的对象是 { MynativeAd, adData }，而这里解构的是 { nativeAd, data }：
+nativeAd 得到 undefined
+data 也得到 undefined
+if (!data) return 直接返回 → UI 完全不填
+所以你看到「数据填充不上去」。
+2. 最小改动方案
+只需要在 loginCanvas.ts 把 push 进去的字段名改成和 AdData + Prefabload 一致即可：
+ts
+window['loadNativeAd'].push({ nativeAd: MynativeAd, data: adData });
+这样：
+addFromWindow 得到 { nativeAd, data }
+_pool 里也是 { nativeAd, data }
+acquire() 返回 { nativeAd, data }
+Prefabload.init({ nativeAd, data }) 解构就能拿到正确的 data 和 nativeAd，UI 自然能填上。
+按要求给你完整修改块（只改这一行）：
+loginCanvas.ts
+// ... existing code ...
+            MynativeAd.onLoad(function (test:any) {
+                if (!test.adList || test.adList.length === 0) {
+                    console.warn(`[广告加载] ${adUnitId} - onLoad 返回空列表`);
+                    if (!isResolved) {
+                        clearTimeout(timeout);
+                        isResolved = true;
+                        resolve();
+                    }
+                    return;
+                }
+                
+                let adId = test.adList[0].adId;
+                let adData = test.adList[0];
+                console.log(`[广告加载] ${adUnitId} - onLoad 成功, length: ${test.adList.length}`);
+                console.log(JSON.stringify(test));
+                var imgUrlList = test.adList[0].imgUrlList;
+                console.log(`[广告加载] ${adUnitId} - imgUrlList: ${imgUrlList}`);
+                
+                window['loadNativeAd'].push({ nativeAd: MynativeAd, data: adData });
+                console.log(`[广告加载] 数据已存入, 当前总数: ${window['loadNativeAd'].length}`);
+                
+                if (!isResolved) {
+                    clearTimeout(timeout);
+                    isResolved = true;
+                    resolve();
+                }
+            });
+// ... existing code ...
+改完重新跑一下：
+看 loginCanvas 日志里「数据已存入」是否正常；
+然后在主场景里 Prefabload 的标题、图标等应该就能正常显示了。
+
+##   nativeAd.showDownloadButton({
+        // 可选：自定义下载按钮的位置/样式（部分参数支持，以华为文档为准）
+        x: 100, // 按钮x坐标
+        y: 200, // 按钮y坐标
+        width: 120, // 按钮宽度
+        height: 40 // 按钮高度
+      }); 如何使用这个呢？
+
+你现在的结构刚好已经把 nativeAd 传到预制体里了，所以用法很简单：在保存下来的广告对象上直接调用。
+1. 在 Prefab 里调用 showDownloadButton
+prefabload.ts 里已经有：
+ts
+private _nativeAd: any = null;
+/** 初始化 - 由 adData.create() 调用 */
+init({ nativeAd, data }) {
+    this._data = data;
+    this._nativeAd = nativeAd;
+    if (!data) return;
+
+    // 填充数据...
+}
+你只需要在 showClickButton 里真正调用：
+prefabload.ts
+// ... existing code ...
+    showClickButton(){
+        if (!this._nativeAd || !this._nativeAd.showDownloadButton) {
+            console.warn("nativeAd 或 showDownloadButton 不存在");
+            return;
+        }
+
+        this._nativeAd.showDownloadButton({
+            x: 100,      // 这里是原生广告的屏幕坐标，按平台文档调
+            y: 200,
+            width: 120,
+            height: 40,
+        });
+    }
+// ... existing code ...
+这样：
+init 时保存的 nativeAd 对象就能在这里用；
+showClickButton() 可以绑定到你 prefab 上的某个按钮点击事件，或者在 init 末尾直接调用让按钮一出现广告就显示。
+例如，如果你想广告一出来就带下载按钮，可以在 init 里结尾加一行：
+ts
+init({ nativeAd, data }) {
+    this._data = data;
+    this._nativeAd = nativeAd;
+    if (!data) return;
+
+    // 填充数据...
+
+    this.showClickButton();   // 广告展示时就同步显示下载按钮
+}
+2. 关闭时的处理
+你已经在 close() 里：
+ts
+close() {
+    this._nativeAd?.destroy();  // 会顺带把原生按钮一起销毁
+    this.node.destroy();
+}
+通常不需要单独 hideDownloadButton，destroy 后按钮会一起消失；如果 SDK 有 hideDownloadButton()，也可以在 destroy 前先调一下，但不是必须。
+总结：把 nativeAd.showDownloadButton({...}) 写在 Prefabload 里，通过 _nativeAd 调用，在合适的时机（init 或按钮点击）触发即可。坐标和尺寸用华为（或对应平台）文档的坐标系来调。
+
+
+
+## 那么我创建不同位置的广告预制体，位置不一样，按钮位置怎么办？
+
+可以分两种思路，看你要不要“跟着预制体走”。
+1. 简单方案：每个广告位固定一组按钮坐标
+前提：原生下载按钮是用 屏幕坐标 画的，和 Cocos 里的节点不是一套坐标系，它本身也不在预制体的节点树里。最简单做法：
+不让按钮“跟着预制体节点走”，而是把它看成“这个广告位在屏幕上的固定位置”。
+比如主界面有两个广告位：
+中间一个：用一组坐标 { x: 100, y: 200 }
+左侧一个：用另一组坐标 { x: 30, y: 200 }
+你现在是这样创建两个预制体：
+ts
+// mainCanvas.ts
+setTimeout(() => { adData.addFromWindow(); adData.create('nativeAd', null, { x: 0,    y: 0 }); }, 10000);
+setTimeout(() => { adData.addFromWindow(); adData.create('nativeAd', null, { x: -500, y: 0 }); }, 13000);
+可以在 Prefabload.init 里区分“第几号广告位”，或者给 data 里面加一个字段（比如 slotIndex），然后：
+ts
+init({ nativeAd, data }) {
+    this._data = data;
+    this._nativeAd = nativeAd;
+    if (!data) return;
+
+    // 填充 UI...
+
+    // 根据不同广告位，使用不同下载按钮坐标
+    const slotIndex = data.slotIndex ?? 0;
+    if (slotIndex === 0) {
+        this._nativeAd.showDownloadButton({ x: 100, y: 200, width: 120, height: 40 });
+    } else if (slotIndex === 1) {
+        this._nativeAd.showDownloadButton({ x: 30, y: 200, width: 120, height: 40 });
+    }
+}
+这种方式最简单：
+预制体位置随你摆，下载按钮位置用“每个广告位固定一组屏幕坐标”来控制。
+2. 稍复杂：按钮跟着预制体的视觉位置走
+如果你真的想让按钮始终贴在预制体某个 UI 位置下面，就需要做：
+在 Prefabload 里拿到节点的世界坐标；
+再把世界坐标转换成屏幕坐标（用 Camera 或 view 相关 API）；
+根据转换结果算出传给 showDownloadButton 的 x/y。
+这部分要写一套“世界坐标 -> 屏幕坐标 -> 原生广告坐标”的换算，比较折腾，不太符合你“最简实现”的偏好，除非你非常在意精确对齐。
+建议
+结合你现在的需求和代码：
+你已经通过工厂模式创建了多个广告预制体。
+下载按钮又是原生层的 UI。
+推荐用方案 1：把每个广告位当成一个固定的屏幕区域，为它配置一组按钮坐标，在 Prefabload.init 里根据广告位选择对应的坐标调用 showDownloadButton。如果你愿意，我可以按照你现在的 AdData / mainCanvas 结构，帮你加一个 slotIndex 字段，并给出完整改动，让两个广告位的按钮分别出现在不同的位置。
+
+## 是相对左上角的，我需要实现一个居中，而且我尝试渲染，没有在图层上显示，但是后天显示请求成功，检查我的代码
+
+
+我先看一下你现在在 prefabload.ts 或其他脚本里具体是怎么调用 showDownloadButton 的，以及有没有用系统分辨率计算坐标，再帮你排查为什么按钮不显示。
+已探索
+1文件 1检索
+问题有两个：
+你确认了坐标是相对屏幕左上角，需要自己算“居中”的 x/y。
+你现在调用 showDownloadButton 的参数结构和文档示例不一致，所以虽然回调 success 了，但按钮实际上没画出来。
+你现在的代码（关键部分）是：
+ts
+this._nativeAd.showDownloadButton({
+    adId : this._nativeAd.adId,
+    style : {
+        left:300,
+        top:500,
+        // ...
+    },
+    success: (code) => {...},
+    fail: (data, code) => {...},
+    complete: () => {...}
+});
+而你之前给的官方示例是类似这样的：
+ts
+nativeAd.showDownloadButton({
+  x: 100,
+  y: 200,
+  width: 120,
+  height: 40
+});
+也就是说：
+文档要求的是：顶层参数里直接给 x / y / width / height；
+你这里传的是一个 style.left / style.top / style.width，字段名完全对不上，SDK 很可能直接忽略位置和大小，导致看不到按钮。
+修改建议：用屏幕尺寸算中心，然后用 x/y/width/height 调用
+按照“左上角为 (0,0)”的坐标系，要把按钮居中，做法是：
+ts
+x = (screenWidth  - btnWidth)  / 2;
+y = (screenHeight - btnHeight) / 2;
+结合你现有的 prefabload.ts，可以改成这样（只改 init 里那一块）：
+prefabload.ts
+// ... existing code ...
+    /** 初始化 - 由 adData.create() 调用 */
+    init({ nativeAd, data }) {
+        this._data = data;
+        this._nativeAd = nativeAd;
+        if (!data) return;
+
+        // 填充数据
+        if (this.MD_ad_title) this.MD_ad_title.string = data.title || "";
+        if (this.MD_ad_source) this.MD_ad_source.string = data.source || "";
+        if (this.MD_ad_desc) this.MD_ad_desc.string = data.desc || "";
+        if (data.imgUrlList?.[0]) this.loadImg(data.imgUrlList[0], this.MD_ad_img);
+        if (data.icon) this.loadImg(data.icon, this.MD_ad_icon);
+
+        // 居中显示原生下载按钮（基于屏幕左上角坐标系）
+        try {
+            const qgAny = (window as any).qg || (globalThis as any).qg;
+            if (qgAny && this._nativeAd && this._nativeAd.showDownloadButton) {
+                const sysInfo = qgAny.getSystemInfoSync();
+                const btnWidth  = 120;
+                const btnHeight = 40;
+
+                const x = (sysInfo.screenWidth  - btnWidth)  / 2;
+                const y = (sysInfo.screenHeight - btnHeight) / 2;
+
+                this._nativeAd.showDownloadButton({
+                    x,
+                    y,
+                    width: btnWidth,
+                    height: btnHeight,
+                    success: (code: number) => {
+                        console.log("showDownloadButton: success", code);
+                    },
+                    fail: (err: any, code: number) => {
+                        console.log("showDownloadButton fail:", err, "code:", code);
+                    },
+                    complete: () => {
+                        console.log("showDownloadButton: complete");
+                    }
+                });
+            } else {
+                console.warn("qg 或 nativeAd.showDownloadButton 不存在，无法显示下载按钮");
+            }
+        } catch (e) {
+            console.error("调用 showDownloadButton 异常:", e);
+        }
+
+        // this.node.on(Node.EventType.TOUCH_END, this.onClick, this);
+    }
+// ... existing code ...
+这样几件事就同时解决了：
+坐标明确是基于屏幕左上角，通过 getSystemInfoSync() 算中心；
+调用了文档示例里那种签名：x / y / width / height，不再使用 style.left 这种字段；
+success/fail 回调还能帮你在日志里确认是否真的调用成功。
+另外注意两点：
+这个按钮是原生层 UI，不会出现在 Cocos 的节点层级里，所以在场景里看不到节点也正常，只能在实机上肉眼看。
+请确保是在目标平台真机 / 模拟器（支持 qg 的环境）下跑，编辑器浏览器预览是看不到原生按钮的。
+你按上面的改一下再跑一版，看看居中的下载按钮是否已经能看到；如果还是“后台成功但看不到”，我们再一起加几条日志打印 sysInfo.screenWidth/Height 和 x/y 来确认有没有算偏。
+hzdhtz43.png
+这个通常是什么问题？
+hzdhtz43.png
+这个通常是什么问题？
+从截图看，showDownloadButton 调用失败了，错误码 200。这个通常表示：
+常见原因（按可能性排序）
+广告对象还没准备好就调用了
+你在 init 里直接同步调用 showDownloadButton，但 nativeAd 可能还没完成内部初始化。
+某些平台的原生广告需要先调用 reportAdShow（上报曝光）后才能显示下载按钮。
+adId 没有传或传错了
+有些平台要求调用 showDownloadButton 时必须带上 adId，用来关联广告实例。
+你之前的代码里有 adId: this._nativeAd.adId，但改成简化版后可能漏了。
+广告类型不支持下载按钮
+如果当前广告素材不是"下载类"广告（比如只是品牌曝光广告），SDK 会返回失败。
+最简修复方案
+结合你的最简偏好，我给你两步改：
+1. 先上报曝光，再延迟显示按钮
+很多平台要求先 reportAdShow 再 showDownloadButton：
+prefabload.ts
+// ... existing code ...
+    init({ nativeAd, data }) {
+        this._data = data;
+        this._nativeAd = nativeAd;
+        if (!data) return;
+
+        if (this.MD_ad_title) this.MD_ad_title.string = data.title || "";
+        if (this.MD_ad_source) this.MD_ad_source.string = data.source || "";
+        if (this.MD_ad_desc) this.MD_ad_desc.string = data.desc || "";
+        if (data.imgUrlList?.[0]) this.loadImg(data.imgUrlList[0], this.MD_ad_img);
+        if (data.icon) this.loadImg(data.icon, this.MD_ad_icon);
+
+        try {
+            const qgAny = (window as any).qg || (globalThis as any).qg;
+            if (!qgAny || !this._nativeAd) {
+                console.warn("qg 或 nativeAd 不存在");
+                return;
+            }
+
+            // 1. 先上报曝光
+            if (this._nativeAd.reportAdShow && data.adId) {
+                this._nativeAd.reportAdShow({ adId: data.adId });
+                console.log("已上报广告曝光, adId:", data.adId);
+            }
+
+            // 2. 延迟一小会再显示下载按钮
+            setTimeout(() => {
+                if (!this._nativeAd || !this._nativeAd.showDownloadButton) {
+                    console.warn("nativeAd.showDownloadButton 不存在");
+                    return;
+                }
+
+                const sysInfo = qgAny.getSystemInfoSync();
+                const btnWidth  = 120;
+                const btnHeight = 40;
+                const x = (sysInfo.screenWidth  - btnWidth)  / 2;
+                const y = (sysInfo.screenHeight - btnHeight) / 2;
+
+                console.log(`[下载按钮] 屏幕: ${sysInfo.screenWidth}x${sysInfo.screenHeight}, 按钮: x=${x}, y=${y}`);
+
+                this._nativeAd.showDownloadButton({
+                    adId: data.adId,
+                    x,
+                    y,
+                    width: btnWidth,
+                    height: btnHeight,
+                    success: (code: number) => {
+                        console.log("showDownloadButton: success", code);
+                    },
+                    fail: (err: any, code: number) => {
+                        console.error("showDownloadButton fail:", err, "code:", code);
+                    },
+                    complete: () => {
+                        console.log("showDownloadButton: complete");
+                    }
+                });
+            }, 300);
+
+        } catch (e) {
+            console.error("调用 showDownloadButton 异常:", e);
+        }
+    }
+// ... existing code ...
+关键改动：
+加了 reportAdShow({ adId: data.adId })，先上报曝光（很多平台强制要求）。
+showDownloadButton 里也传了 adId: data.adId。
+用 setTimeout(300) 延迟一点点，避免 SDK 内部还没准备好。
+增加了屏幕尺寸和按钮位置的日志，方便你看坐标对不对。
+2. 确保 data 里有 adId
+你现在从 loginCanvas 里 push 到 window['loadNativeAd'] 的是：
+ts
+window['loadNativeAd'].push({ nativeAd: MynativeAd, data: adData });
+其中 adData = test.adList[0]，通常里面有 adId，但为了保险，可以在 loginCanvas.ts 里加一行日志确认：
+ts
+let adData = test.adList[0];
+console.log(`[广告加载] adData.adId: ${adData.adId}`);
+如果这里打出来是 undefined，说明 SDK 返回的数据里没有 adId，那就需要查文档看字段名是不是叫别的（比如 ad_id / id 之类）。
+总结
+错误码 200 通常是：没上报曝光 / adId 缺失 / 广告类型不支持下载按钮。
+按上面改完后，重新跑一遍，看日志里：
+reportAdShow 是否成功；
+showDownloadButton 的 fail 回调是否还是 200，还是变成了别的错误；
+屏幕尺寸和按钮坐标是否合理。
+如果还是报 200，就把 adData 完整打印出来（console.log(JSON.stringify(adData))），我们一起看看 SDK 返回的字段到底是什么结构。
+kvlrf601.png
+广告成功渲染了，为什么id还是undefined
+kvlrf601.png
+广告成功渲染了，为什么id还是undefined
+从截图看，[AdData] 创建广告: nativeAd 后面打印的对象是 undefined，说明 data.adId 是 undefined，所以 reportAdShow 和 showDownloadButton 都拿不到正确的 adId，最终导致错误码 200。
+问题根源
+你现在的数据流是这样的：
+loginCanvas.ts 里：
+ts
+let adData = test.adList[0];
+window['loadNativeAd'].push({ nativeAd: MynativeAd, data: adData });
+AdData.ts 里：
+ts
+addFromWindow(): any {
+    const data = window['loadNativeAd'];
+    if (data.length > 0 && this._pool.length < 4) {
+        let info = data.pop();              // { nativeAd: MynativeAd, data: adData }
+        this._pool.push({ ...info });
+        return info;
+    }
+}
+
+acquire(): any {
+    if (this._pool.length > 0)
+        return this._pool.pop();            // 返回 { nativeAd, data }
+}
+
+create(...) {
+    const adData = data || this.acquire();  // adData = { nativeAd, data }
+    ...
+    comp?.init?.(adData);                   // 传进去的是整个对象
+}
+Prefabload.ts 里：
+ts
+init({ nativeAd, data }) {
+    this._data = data;
+    this._nativeAd = nativeAd;
+    ...
+    this._nativeAd.reportAdShow({ adId: data.adId });
+    ...
+    this._nativeAd.showDownloadButton({ adId: data.adId, ... });
+}
+关键问题：data 里确实有 adId 吗？从你之前的日志看，test.adList[0] 返回的对象里应该有 adId 字段，但现在打印出来是 undefined。可能原因：
+SDK 返回的字段名不是 adId，而是别的（比如 ad_id / id / adID）。
+或者这个广告素材根本就没有 adId（某些测试广告或品牌广告可能没有）。
+最简排查 + 修复
+1. 先看 SDK 返回的完整数据结构
+在 loginCanvas.ts 的 onLoad 里，把整个 adData 打印出来：
+loginCanvas.ts
+// ... existing code ...
+            MynativeAd.onLoad(function (test:any) {
+                if (!test.adList || test.adList.length === 0) {
+                    console.warn(`[广告加载] ${adUnitId} - onLoad 返回空列表`);
+                    if (!isResolved) {
+                        clearTimeout(timeout);
+                        isResolved = true;
+                        resolve();
+                    }
+                    return;
+                }
+                
+                let adId = test.adList[0].adId;
+                let adData = test.adList[0];
+                console.log(`[广告加载] ${adUnitId} - onLoad 成功, length: ${test.adList.length}`);
+                console.log(`[广告加载] adData 完整内容:`, JSON.stringify(adData));
+                var imgUrlList = test.adList[0].imgUrlList;
+                console.log(`[广告加载] ${adUnitId} - imgUrlList: ${imgUrlList}`);
+                
+                window['loadNativeAd'].push({ nativeAd: MynativeAd, data: adData });
+                console.log(`[广告加载] 数据已存入, 当前总数: ${window['loadNativeAd'].length}`);
+                
+                if (!isResolved) {
+                    clearTimeout(timeout);
+                    isResolved = true;
+                    resolve();
+                }
+            });
+// ... existing code ...
+跑一次后，看日志里 [广告加载] adData 完整内容: 这行，确认字段名到底叫什么。
+2. 如果字段名不是 adId，就改成实际的字段名
+假设日志显示字段叫 ad_id 或者 id，那就在 Prefabload 里改：
+ts
+// 假设实际字段叫 ad_id
+const realAdId = data.adId || data.ad_id || data.id;
+
+if (this._nativeAd.reportAdShow && realAdId) {
+    this._nativeAd.reportAdShow({ adId: realAdId });
+}
+
+...
+
+this._nativeAd.showDownloadButton({
+    adId: realAdId,
+    ...
+});
+3. 如果日志显示压根没有任何 ID 字段
+有些平台的某些广告素材确实不返回 adId（比如纯品牌曝光广告），那就：
+不传 adId 参数；
+或者用 nativeAd 自身的某个标识（如果有的话）。
+具体要看你接入的平台文档怎么说。
+总结
+先在 loginCanvas 里打印完整的 adData JSON，看字段到底叫什么。
+如果字段名不是 adId，就在 Prefabload 里用 data.ad_id 或其他实际字段名。
+如果压根没有 ID 字段，就去掉 adId 参数，或者用 nativeAd 自己的 ID（有些 SDK 会把 ID 挂在 nativeAd 对象上，而不是 data 里）。
+你先按第一步加日志跑一次，把完整的 JSON 贴给我，我帮你确认字段名。
+x3as8y17.png
+有adid，引用是不是出问题了
+x3as8y17.png
+有adid，引用是不是出问题了
+你说得对，引用确实出问题了。从截图看，日志里 adData 完整内容确实有 adId（比如 "adId":"i7ik1b3mgg"），但到了 Prefabload.init 里 data.adId 却是 undefined。
+问题定位
+回看你的数据流：
+ts
+// loginCanvas.ts - 这里 adData 有 adId ✅
+window['loadNativeAd'].push({ nativeAd: MynativeAd, data: adData });
+
+// AdData.ts
+addFromWindow(): any {
+    const data = window['loadNativeAd'];
+    if (data.length > 0 && this._pool.length < 4) {
+        let info = data.pop();              // { nativeAd: MynativeAd, data: adData }
+        this._pool.push({ ...info });       // ⚠️ 浅拷贝了 info，但后面没用到
+        return info;                        // ⚠️ 返回的是原始 info（data.pop() 的结果）
+    }
+}
+
+acquire(): any {
+    if (this._pool.length > 0)
+        return this._pool.pop();            // 返回 { nativeAd, data }
+}
+
+create(...) {
+    const adData = data || this.acquire();  // adData 拿到的是 { nativeAd, data }
+    ...
+    comp?.init?.(adData);                   // ⚠️ 传给 init 的是 { nativeAd, data }
+}
+关键 bug：AdData.create 里传给 init 的是整个 { nativeAd, data } 对象，而不是只传 data 本身。所以 Prefabload.init 里解构 { nativeAd, data } 后：
+nativeAd 拿到的是 MynativeAd 对象 ✅
+data 拿到的是 adData（里面有 adId）✅
+但是你在 init 里又写了：
+ts
+init({ nativeAd, data }) {
+    this._data = data;
+    this._nativeAd = nativeAd;
+    ...
+    this._nativeAd.reportAdShow({ adId: data.adId });  // ⬅️ 这里的 data 是对的
+}
+等等，如果 data 是对的，为什么还打印 undefined 呢？
+真正的问题：日志打印的不是 data.adId
+我仔细看了一下截图，发现日志里打印 undefined 的那行是：
+plaintext
+[AdData] 创建广告: nativeAd
+这个日志是在 AdData.create 里打印的，不是在 Prefabload.init 里。我们看一下 AdData.create 的代码（从你之前的文件）：
+ts
+create(prefabName: string, data?: any, options?: { ... }): Node {
+    const prefab = this._prefabs.get(prefabName);
+    if (!prefab) {
+        console.error(`[AdData] 预制体未加载: ${prefabName}`);
+        return;
+    }
+
+    const adData = data || this.acquire();
+    if (!adData) {
+        console.error("[AdData] 没有可用的广告数据");
+    }
+
+    const node = instantiate(prefab);
+    ...
+    const comp = node.getComponent('Prefabload') as any;
+    comp?.init?.(adData);
+
+    console.log(`[AdData] 创建广告: ${prefabName}`);  // ⬅️ 这里打印的
+    return node;
+}
+这个日志只是打印了 prefabName（也就是 "nativeAd"），跟 adId 完全没关系！所以 undefined 是另外一个日志打印的，不是你想的那个。
+真正要检查的：Prefabload.init 里日志
+现在需要在 Prefabload.init 的最开头加一条日志，确认 data 里是否真的有 adId：
+prefabload.ts
+// ... existing code ...
+    init({ nativeAd, data }) {
+        console.log("[Prefabload.init] 收到的 data:", JSON.stringify(data));
+        console.log("[Prefabload.init] data.adId:", data?.adId);
+
+        this._data = data;
+        this._nativeAd = nativeAd;
+        if (!data) return;
+
+        if (this.MD_ad_title) this.MD_ad_title.string = data.title || "";
+        if (this.MD_ad_source) this.MD_ad_source.string = data.source || "";
+        if (this.MD_ad_desc) this.MD_ad_desc.string = data.desc || "";
+        if (data.imgUrlList?.[0]) this.loadImg(data.imgUrlList[0], this.MD_ad_img);
+        if (data.icon) this.loadImg(data.icon, this.MD_ad_icon);
+
+        try {
+            const qgAny = (window as any).qg || (globalThis as any).qg;
+            if (!qgAny || !this._nativeAd) {
+                console.warn("qg 或 nativeAd 不存在");
+                return;
+            }
+
+            const realAdId = data.adId || data.ad_id || data.id;
+            console.log("[Prefabload.init] 提取的 adId:", realAdId);
+
+            if (this._nativeAd.reportAdShow && realAdId) {
+                this._nativeAd.reportAdShow({ adId: realAdId });
+                console.log("已上报广告曝光, adId:", realAdId);
+            }
+
+            setTimeout(() => {
+                if (!this._nativeAd || !this._nativeAd.showDownloadButton) {
+                    console.warn("nativeAd.showDownloadButton 不存在");
+                    return;
+                }
+
+                const sysInfo = qgAny.getSystemInfoSync();
+                const btnWidth  = 120;
+                const btnHeight = 40;
+                const x = (sysInfo.screenWidth  - btnWidth)  / 2;
+                const y = (sysInfo.screenHeight - btnHeight) / 2;
+
+                console.log(`[下载按钮] 屏幕: ${sysInfo.screenWidth}x${sysInfo.screenHeight}, 按钮: x=${x}, y=${y}, adId: ${realAdId}`);
+
+                this._nativeAd.showDownloadButton({
+                    adId: realAdId,
+                    x,
+                    y,
+                    width: btnWidth,
+                    height: btnHeight,
+                    success: (code: number) => {
+                        console.log("showDownloadButton: success", code);
+                    },
+                    fail: (err: any, code: number) => {
+                        console.error("showDownloadButton fail:", err, "code:", code);
+                    },
+                    complete: () => {
+                        console.log("showDownloadButton: complete");
+                    }
+                });
+            }, 300);
+
+        } catch (e) {
+            console.error("调用 showDownloadButton 异常:", e);
+        }
+    }
+// ... existing code ...
+加完这些日志后再跑一次，看：
+[Prefabload.init] 收到的 data: 这行是不是完整的广告数据 JSON，里面有没有 adId。
+[Prefabload.init] data.adId: 这行是不是 undefined。
+[Prefabload.init] 提取的 adId: 这行是不是成功拿到了 ID。
+如果这三行都显示 adId 存在且正确，那 showDownloadButton 就应该能成功；如果还是 undefined，那就是 AdData.create 传参的时候把 data 丢了，我们再改 AdData.ts。
+vr60p1si.png
+为什么内容又不填充了？检查一下我是改了什么东西吗
+vr60p1si.png
+为什么内容又不填充了？检查一下我是改了什么东西吗
+从截图看，日志里只有 [AdData] 预制体已缓存: nativeAd，但没有看到 [Prefabload.init] 开头的任何日志，说明 init 方法根本没被调用，或者调用时 data 是 null/undefined 直接 return 了。我来帮你排查一下当前的完整数据流，看是不是哪里把数据弄丢了。
+已探索
+3文件
+找到问题了！看 prefabload.ts 的第 24 行：
+ts
+console.log("--------------------------------------------------", this._nativeAd['adList'][0].adId);
+if (!data) return;
+这行日志在 if (!data) return 之前，所以即使 data 是 null，也会先报错访问 this._nativeAd['adList'][0]，然后才会 return。而且你这行还有个更严重的问题：nativeAd 是广告对象本身，不是 test 那个回调参数，它没有 adList 属性！你把我上一次给你的日志代码改错位置了，导致：
+data 检查被推后了；
+访问了错误的属性 this._nativeAd['adList'][0]；
+UI 填充代码在 if (!data) return 后面，如果 data 是 null 就直接跳过了。
+修复方案
+把第 21-32 行改回正确的顺序和逻辑：
+prefabload.ts
+// ... existing code ...
+    init({ nativeAd, data }) {
+        console.log("[Prefabload.init] 收到参数 - nativeAd:", nativeAd, "data:", data);
+        console.log("[Prefabload.init] data.adId:", data?.adId);
+
+        this._data = data;
+        this._nativeAd = nativeAd;
+        
+        if (!data) {
+            console.warn("[Prefabload.init] data 为空，跳过渲染");
+            return;
+        }
+
+        if (this.MD_ad_title) this.MD_ad_title.string = data.title || "";
+        if (this.MD_ad_source) this.MD_ad_source.string = data.source || "";
+        if (this.MD_ad_desc) this.MD_ad_desc.string = data.desc || "";
+        if (data.imgUrlList?.[0]) this.loadImg(data.imgUrlList[0], this.MD_ad_img);
+        if (data.icon) this.loadImg(data.icon, this.MD_ad_icon);
+
+        try {
+            const qgAny = (window as any).qg || (globalThis as any).qg;
+            if (!qgAny || !this._nativeAd) {
+                console.warn("qg 或 nativeAd 不存在");
+                return;
+            }
+
+            const realAdId = data.adId || data.ad_id || data.id;
+            console.log("[Prefabload.init] 提取的 adId:", realAdId);
+
+            if (this._nativeAd.reportAdShow && realAdId) {
+                this._nativeAd.reportAdShow({ adId: realAdId });
+                console.log("已上报广告曝光, adId:", realAdId);
+            }
+
+            setTimeout(() => {
+                if (!this._nativeAd || !this._nativeAd.showDownloadButton) {
+                    console.warn("nativeAd.showDownloadButton 不存在");
+                    return;
+                }
+
+                const sysInfo = qgAny.getSystemInfoSync();
+                const btnWidth  = 120;
+                const btnHeight = 40;
+                const x = (sysInfo.screenWidth  - btnWidth)  / 2;
+                const y = (sysInfo.screenHeight - btnHeight) / 2;
+
+                console.log(`[下载按钮] 屏幕: ${sysInfo.screenWidth}x${sysInfo.screenHeight}, 按钮: x=${x}, y=${y}, adId: ${realAdId}`);
+
+                this._nativeAd.showDownloadButton({
+                    adId: realAdId,
+                    x,
+                    y,
+                    width: btnWidth,
+                    height: btnHeight,
+                    success: (code: number) => {
+                        console.log("showDownloadButton: success", code);
+                    },
+                    fail: (err: any, code: number) => {
+                        console.error("showDownloadButton fail:", err, "code:", code);
+                    },
+                    complete: () => {
+                        console.log("showDownloadButton: complete");
+                    }
+                });
+            }, 300);
+
+        } catch (e) {
+            console.error("调用 showDownloadButton 异常:", e);
+        }
+    }
+// ... existing code ...
+关键改动：
+日志移到最前面，但不访问错误的属性（nativeAd 本身没有 adList）。
+if (!data) return 放在填充 UI 之前，确保 data 为空时不会继续执行。
+用正确的 data.adId 而不是 this._nativeAd['adList'][0].adId。
+加了完整的 reportAdShow 和居中按钮逻辑。
+改完后重新跑，应该就能看到：
+[Prefabload.init] 收到参数... 日志里 data 有完整内容；
+UI 正常填充（标题、图标等）；
+下载按钮居中显示，不再报 200 错误。
+prefabload.ts 128-131
+ 点击是销毁广告对象，但是showDownloadButton生成的按钮还在，是没有销毁成功吗
+prefabload.ts 128-131
+ 点击是销毁广告对象，但是showDownloadButton生成的按钮还在，是没有销毁成功吗
+不是 destroy() 没成功，而是 showDownloadButton 创建的原生按钮需要单独调用隐藏/销毁方法。
+问题原因
+nativeAd.destroy() 只会销毁广告对象本身（比如释放内存、解绑回调），但不会自动隐藏已经显示出来的原生下载按钮，因为：
+下载按钮是 SDK 在原生层画的一个独立 UI 控件。
+destroy() 和 showDownloadButton() 是两个独立的 API。
+按照大部分平台的设计，你需要主动调用类似 hideDownloadButton() 的方法才能把按钮藏起来。
+最简修复：销毁前先隐藏按钮
+在 close() 里，先调用隐藏按钮的方法（如果 SDK 提供的话），再 destroy：
+prefabload.ts
+// ... existing code ...
+    close() {
+        if (this._nativeAd) {
+            // 1. 先隐藏下载按钮（如果 SDK 提供此方法）
+            if (this._nativeAd.hideDownloadButton) {
+                try {
+                    this._nativeAd.hideDownloadButton();
+                    console.log("下载按钮已隐藏");
+                } catch (e) {
+                    console.warn("隐藏下载按钮失败:", e);
+                }
+            }
+
+            // 2. 再销毁广告对象
+            try {
+                this._nativeAd.destroy();
+                console.log("广告对象已销毁");
+            } catch (e) {
+                console.warn("销毁广告对象失败:", e);
+            }
+            this._nativeAd = null;
+        }
+
+        // 3. 最后销毁 Cocos 节点
+        this.node.destroy();
+    }
+// ... existing code ...
+如果 SDK 没有 hideDownloadButton 方法
+有些平台的 SDK 可能只有 showDownloadButton，没有对应的 hide 方法。这种情况下，常见做法是：
+重新调用 showDownloadButton 并传一个超出屏幕的坐标，把按钮"藏"到看不见的地方：
+ts
+this._nativeAd.showDownloadButton({
+    x: -9999,
+    y: -9999,
+    width: 1,
+    height: 1
+});
+或者查阅你接入平台的文档，看是否有专门的隐藏/销毁按钮的 API（比如华为快应用可能叫 removeDownloadButton 之类）。
+总结
+nativeAd.destroy() 不会自动隐藏原生按钮，需要你显式调用对应的隐藏方法。
+按上面的代码改，先 hideDownloadButton()（如果有），再 destroy()，最后 node.destroy()。
+如果 SDK 没有 hide 方法，就用"移到屏幕外"的方式临时隐藏。
+改完后再点关闭，按钮应该就会消失了。如果还不行，把你平台的 SDK 文档链接发给我，我帮你找具体的 API 名字。
+sysInfo:  2400 1080 打印出的这两个是设备的只是像素尺寸吗，showDownloadButton是根据这些尺寸来布局的？
+sysInfo:  2400 1080 打印出的这两个是设备的只是像素尺寸吗，showDownloadButton是根据这些尺寸来布局的？
+是的，sysInfo.screenWidth 和 sysInfo.screenHeight 是设备的物理像素尺寸（或者叫逻辑像素，取决于平台），showDownloadButton 就是基于这些尺寸的坐标系来布局的。
+具体说明
+1. sysInfo 返回的是什么？
+ts
+const sysInfo = qg.getSystemInfoSync();
+// sysInfo.screenWidth:  2400  (屏幕宽度，单位：px)
+// sysInfo.screenHeight: 1080  (屏幕高度，单位：px)
+这里的 2400 x 1080 是设备的屏幕分辨率（可能是物理像素或逻辑像素，看平台定义），通常：
+横屏设备：宽 > 高（比如 2400 x 1080）
+竖屏设备：高 > 宽（比如 1080 x 2400）
+2. showDownloadButton 的坐标系
+showDownloadButton 的 x / y / width / height 参数，就是基于这个 screenWidth x screenHeight 的坐标系：
+原点 (0, 0)：屏幕左上角
+X 轴：向右递增，最大值 = screenWidth（2400）
+Y 轴：向下递增，最大值 = screenHeight（1080）
+所以如果你要把按钮放在屏幕中心：
+ts
+const btnWidth  = 120;
+const btnHeight = 40;
+
+const x = (sysInfo.screenWidth  - btnWidth)  / 2;  // (2400 - 120) / 2 = 1140
+const y = (sysInfo.screenHeight - btnHeight) / 2;  // (1080 - 40)  / 2 = 520
+按钮就会显示在：横向居中 1140px，纵向居中 520px 的位置。
+注意事项
+1. Cocos 的坐标系 ≠ 原生按钮的坐标系
+Cocos Canvas：默认原点在中心，Y 轴向上为正。
+原生按钮：原点在左上角，Y 轴向下为正。
+所以你的 Cocos 预制体（比如广告 UI）的位置，和原生按钮的位置，不是一套坐标系，需要分别计算。
+2. 如果想让按钮跟着预制体走
+如果你想让原生按钮始终贴在预制体某个位置（比如预制体底部下方），就需要：
+拿到预制体在 Cocos 里的世界坐标；
+用 Camera 转换成屏幕坐标；
+再把屏幕坐标（Y 轴向上）转成原生坐标系（Y 轴向下）。
+这比较复杂，不太符合你"最简实现"的偏好。通常做法是：每个广告位固定一个屏幕坐标，直接用 sysInfo 算好传给 showDownloadButton。
+总结
+2400 x 1080 是设备的屏幕分辨率（像素）。
+showDownloadButton 的 x/y 就是基于这个分辨率，左上角为原点，向右向下为正。
+你现在用 (screenWidth - btnWidth) / 2 算出来的 x=1140, y=520，就是让按钮显示在屏幕正中央。
+如果你要调整位置（比如偏上、偏下），直接改 y 的计算就行，比如 y = 200（靠上）或 y = 800（靠下）。

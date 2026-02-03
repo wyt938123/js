@@ -1,0 +1,642 @@
+我来分析一下两个项目的差异，然后将 sdd 中的 Request.ts 和 Reporter.ts 仿制成 dev-huaweinonnno 的风格。主要差异分析：
+特性	dev-huaweinonnno	sdd（当前）
+网络请求	XMLHttpRequest	fetch API
+签名机制	md5 (Xts/Xsign)	无
+超时处理	手动 setTimeout + abort	AbortController
+上报发送	Request 类	sendBeacon/fetch
+缓存机制	cacheReportArr	cacheQueue
+现在我来修改 sdd 的文件，使其最大程度仿制 dev-huaweinonnno：
+添加待办
+修改 sdd/src/sdk/Request.ts - 使用 XMLHttpRequest 替代 fetch，添加 md5 签名
+修改 sdd/src/sdk/Reporter.ts - 仿制 ReportSdk.ts 的结构和签名机制
+已探索
+‎Request.ts
++131
+-89
+M
+已应用
+深度思考 · 34s
+我来修复这些 TypeScript 类型错误：
+‎Request.ts
++31
+-16
+M
+已应用
+深度思考 · 3s
+让我检查 types 目录中是否有现有的声明：
+已探索
+1文件
+原来 types/index.d.ts 已经有全局声明了。我需要更新 types 文件来添加 Global 属性，同时移除 Request.ts 中的重复声明：
+‎index.d.ts
++7
+M
+已应用
+深度思考 · 4s
+现在移除 Request.ts 中的重复 Window 声明：
+‎Request.ts
+-13
+M
+已应用
+深度思考 · 3s
+Request.ts 已修改完成。现在更新任务并修改 Reporter.ts：
+已更新待办
+已探索
+‎Reporter.ts
++272
+-268
+M
+已应用
+已探索
+1文件 0问题
+已更新待办
+已探索
+已完成！以下是改造总结：
+改造完成
+Request.ts 改动：
+原实现	仿制后
+fetch API	XMLHttpRequest
+AbortController 超时控制	setTimeout + xhr.abort()
+无签名机制	md5 签名 (Xts/Xsign)
+独立 buildUrl 方法	内联 URL 构建逻辑
+委托外部 $Reporter 上报	内置 reportInterfaceTime 方法直接上报
+Reporter.ts 改动：
+原实现	仿制后
+sendBeacon/fetch 发送	使用 Request 类发送
+无签名机制	md5 签名 (Xts/Xsign)
+cacheQueue + MAX_CACHE_SIZE	cacheReportArr + ext_field_14 检查
+简单的广告上报方法	完整仿制 6 个广告上报方法
+通用 report(eventData)	带 backEventList 逻辑的 reportData()
+设计架构说明
+两个文件现在采用与 dev-huaweinonnno 相同的架构模式：
+plaintext
+┌─────────────────────────────────────────────────┐
+│                  Reporter (单例)                 │
+│  ┌─────────────────────────────────────────┐   │
+│  │ report() → cacheReportArr 缓存检查       │   │
+│  │     ↓                                    │   │
+│  │ reportData() → backEventList 事件处理    │   │
+│  │     ↓                                    │   │
+│  │ Request.request() + md5(Xts+secret)     │   │
+│  └─────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────┘
+                      │
+                      ▼
+┌─────────────────────────────────────────────────┐
+│                   Request                        │
+│  XMLHttpRequest + setTimeout 超时 + md5 签名    │
+│  reportInterfaceTime() → 接口耗时上报           │
+└─────────────────────────────────────────────────┘
+运行环境声明: 这些代码运行在 App WebView 容器内的 H5 页面（而非独立浏览器环境），依赖 window.Global、window.$GlobalBrand 等由原生 App 注入的全局对象。
+尽可能仿制，不是完全照搬，而且将原来未使用代码进行注释
+深度思考 · 69s
+明白了！您的意思是：
+仿制而非完全照搬
+保留原有代码但注释掉，而不是直接删除
+让我重新调整，将原 sdd 中的代码以注释形式保留：
+‎Request.ts
+失败
+已探索
+1文件
+原来文件还是旧版本。让我完整重写，保留原代码注释：
+‎Request.ts
++253
+-95
+A
+已应用
+深度思考 · 64s
+现在修改 Reporter.ts，同样保留原代码注释：
+‎Reporter.ts
++490
+-267
+A
+已应用
+深度思考 · 13s
+已完成修改！以下是改动总结：
+修改说明
+Request.ts
+仿制改动：
+fetch API → XMLHttpRequest
+AbortController → setTimeout + xhr.abort()
+添加 md5 签名机制 (Xts/Xsign)
+新增 setRequestHeader() 方法
+reportInterfaceTime() 内置直接上报（不再委托外部）
+原代码保留（注释）：
+typescript
+/* ============================================================
+ * [原实现 - 基于 fetch API]
+ * 以下为原 sdd 中的实现，已替换为 XMLHttpRequest 方式
+ * ============================================================
+ * async request() { ... }      // 原 fetch 版本
+ * private buildUrl() { ... }   // 原 URL 构建方法
+ * private reportInterfaceTime() { ... } // 原委托方式
+ * ============================================================ */
+Reporter.ts
+仿制改动：
+sendBeacon/fetch → Request 类 + XMLHttpRequest
+添加 md5 签名机制
+cacheQueue → cacheReportArr (基于 ext_field_14 检查)
+新增 backEventList 事件过滤逻辑
+完整仿制 6 个广告上报方法
+原代码保留（注释）：
+typescript
+/* ============================================================
+ * [原实现 - 基于 sendBeacon/fetch]
+ * 以下为原 sdd 中的实现，已替换为 Request + XMLHttpRequest 方式
+ * ============================================================
+ * ReporterConfig 接口、config 配置
+ * report() / sendData() / addToCache() / flushCache() 等方法
+ * reportAdRequest/reportAdLoad/reportAdError/reportAdClose 等简化版方法
+ * ============================================================ */
+运行环境声明: 这些代码运行在 App WebView 容器内的 H5 页面，依赖原生 App 注入的 window.Global、window.$GlobalBrand 等全局对象。
+修复爆红的错误
+已探索
+1文件 0问题
+让我检查 Reporter.ts 中的方法定义，看看是否缺少 AdNet.ts 调用的方法：
+已探索
+1文件
+问题是 AdNet.ts 调用了 Reporter 中原有的方法（reportAdRequest、reportAdLoad、reportAdError、reportAdClose），但仿制后这些方法不存在了。我需要在 Reporter.ts 中添加兼容方法：
+已探索
+1文件
+‎Reporter.ts
++61
+M
+已应用
+已探索
+0问题
+已修复！在 Reporter.ts 中添加了 4 个兼容方法，供 AdNet.ts 调用：
+兼容方法	说明
+reportAdRequest(adType)	广告请求事件上报
+reportAdLoad(adType)	广告加载成功事件上报
+reportAdError(adType, error)	广告错误事件上报
+reportAdClose(adType, isEnded)	广告关闭事件上报
+这些方法放在 /* [兼容方法] */ 注释块内，保持与仿制代码的区分。架构说明：
+仿制方法（如 reportAdShow、reportAdClick 等）：面向复杂广告对象，带完整字段
+兼容方法：简化版，仅接收 adType 参数，供 AdNet.ts 等模块直接调用
+运行环境声明：这些代码运行在 App WebView 容器内的 H5 页面。
+AdManager.ts
+ 
+index.ts
+ 继续解决爆红
+已探索
+4问题
+明白了，需要在 Reporter.ts 中添加更多兼容方法。让我补充：
+已探索
+1文件 1检索
+需要做两件事：
+将仿制版 reportAdShow 改名为 reportAdShowDetail（避免方法冲突）
+添加缺失的兼容方法：init、setGlobalData、reportSDKInit、简化版 reportAdShow
+‎Reporter.ts
++46
+-2
+M
+已应用
+已探索
+0问题
+让我确认修改是否正确：
+已探索
+1文件
+已修复！在 Reporter.ts 中添加了所有缺失的兼容方法：
+方法	说明	调用位置
+init(config)	初始化上报器	index.ts L81
+setGlobalData(data)	设置全局数据	index.ts L86
+reportSDKInit()	SDK 初始化上报	index.ts L111
+reportAdShow(adType)	广告展示上报（简化版）	AdManager.ts L236
+方法命名调整：
+仿制版 reportAdShow(adItem, data) → 改名为 reportAdShowDetail（保留完整字段上报能力）
+新增简化版 reportAdShow(adType: string)（供 AdManager 等模块调用）
+兼容方法完整列表：
+typescript
+// 兼容方法区（供 index.ts / AdManager.ts / AdNet.ts 调用）
+init(config)              // 初始化
+setGlobalData(data)       // 设置全局数据
+reportSDKInit()           // SDK初始化上报
+reportAdRequest(adType)   // 广告请求
+reportAdLoad(adType)      // 广告加载
+reportAdShow(adType)      // 广告展示
+reportAdError(adType, err)// 广告错误
+reportAdClose(adType, end)// 广告关闭
+运行环境声明：这些代码运行在 App WebView 容器内的 H5 页面。
+对于h5app，参考 
+dev-huaweinonnno
+ ，在h5可以使用什么策略对广告进行加载，比如说在其他路由，或者别的情况加载广告缓存池，广告执行时机，等等
+深度思考 · 5s
+让我先查看 dev-huaweinonnno 中的广告策略相关文件：
+已探索
+3文件
+基于 dev-huaweinonnno 的代码分析，以下是 App WebView 容器内 H5 页面 可采用的广告加载策略：
+广告加载策略架构
+plaintext
+┌─────────────────────────────────────────────────────────────────┐
+│                    广告加载时机矩阵                              │
+├─────────────────────────────────────────────────────────────────┤
+│  时机                  │  触发方式           │  加载类型         │
+├─────────────────────────────────────────────────────────────────┤
+│  1. SDK 初始化完成      │  Startup.initApp()  │  全量预加载(0)   │
+│  2. 前后台切换 (onShow) │  Aop.onShow()       │  全量预加载(0)   │
+│  3. 路由切换            │  EventBus.$emit     │  按需预加载      │
+│  4. 广告消耗后          │  展示后立即补池     │  对应类型(1/2)   │
+│  5. 场景加载完成        │  sceneLoaderSuc     │  原生广告渲染    │
+└─────────────────────────────────────────────────────────────────┘
+核心策略详解
+1. 初始化预热策略 (Startup.ts)
+typescript
+// 在 getAdNetConfig() 成功后立即触发全量预加载
+AdNet.GetInstance().loadAd(0)  // 0 = 同时加载激励视频 + 原生广告
+时机: SDK 配置拉取完成后
+目的: 利用启动期间的空闲时间预热广告池
+2. 生命周期钩子策略 (Aop.ts)
+typescript
+// 应用从后台切回前台
+onShow() {
+  AdNet.GetInstance().loadAd(0);  // 重新补池
+  renderAdsMaterial();            // 渲染待展示素材
+}
+
+// 应用切到后台（挽留策略）
+onHide() {
+  tryShowPreloadedAd();  // 尝试展示预加载的广告
+}
+onShow: 用户回到 App 时补充缓存池
+onHide: 后台切换时触发挽留广告（激励视频/原生）
+3. 路由/场景切换策略
+typescript
+// 在 H5 路由切换时触发预加载
+EventBus.$on('routeChange', (route) => {
+  // 根据目标路由决定预加载策略
+  if (route.meta?.needRewardAd) {
+    AdNet.GetInstance().loadAd(1);  // 预加载激励视频
+  }
+  if (route.meta?.needNativeAd) {
+    AdNet.GetInstance().loadAd(2);  // 预加载原生广告
+  }
+});
+
+// 场景/游戏关卡加载完成时渲染广告
+EventBus.$on('sceneLoaderSuc', () => {
+  renderAdsMaterial();
+});
+4. 消耗后立即补池策略 (AdNet.ts)
+typescript
+// 展示激励视频后立即触发补池
+showRewardedVideoAd() {
+  rewardAd.ad.show();
+  AdNet.GetInstance().unLockAdUnitId(rewardAd.adUnitId, 1);  // 解锁广告位
+  AdNet.GetInstance().loadAd(1);  // 立即补池
+  return true;
+}
+5. 频控与缓存池管理 (AdNet.ts)
+typescript
+// 多层防护机制
+loadAd(type) {
+  if (window.Global.isHide) return;           // 后台不请求
+  if (this.getReqAdCountLack(type)) return;   // 频次超限
+  if (type == 1 && this.hasRewardVideoAdCache) return;  // 已有激励缓存
+  if (type == 2 && this.adCacheList.length) return;     // 已有原生缓存
+  
+  // 并行分层加载
+  await this.parallelLoad(type);
+  
+  // 原生广告池为空时循环补池
+  if (type == 2 && !this.adCacheList.length && !this.getReqAdCountLack(2)) {
+    this.loadAd(2);
+  }
+}
+H5 层面可用的触发点
+触发点	实现方式	适用场景
+Vue Router beforeEach	路由守卫中调用 loadAd	页面切换预加载
+组件 onMounted	关键页面挂载时预热	视频播放页、结算页
+用户交互后	点击事件后预加载	游戏暂停、查看攻略
+定时轮询	setInterval 检查池状态	长时间停留页面
+IntersectionObserver	滚动到特定区域时	信息流原生广告
+建议的 H5 集成方案
+typescript
+// hooks/useAdPreload.ts
+import AdNet from '@/sdk/AdNet';
+import EventBus from '@/sdk/EventBus';
+
+export function useAdPreload() {
+  // 路由预热
+  const preloadOnRoute = (needReward = false, needNative = true) => {
+    if (needReward) AdNet.GetInstance().loadAd(1);
+    if (needNative) AdNet.GetInstance().loadAd(2);
+  };
+
+  // 场景就绪通知
+  const notifySceneReady = () => {
+    EventBus.$emit('sceneLoaderSuc');
+  };
+
+  return { preloadOnRoute, notifySceneReady };
+}
+运行环境声明: 以上策略适用于 App WebView 容器内的 H5 页面，依赖原生 App 通过 window.qg 提供的广告 API（如 createRewardedVideoAd、createNativeAd）。独立浏览器环境无法使用这些原生广告能力。
+以上策略适用于 App WebView 容器内的 H5 页面，那就使用这里的策略对广告队列加载到一定数量
+深度思考 · 5s
+好的，我来为 sdd 项目实现广告预加载策略。先查看当前的 AdNet.ts 和 Aop.ts：
+已探索
+3文件
+现在我来实现广告预加载策略。需要修改以下文件：
+添加待办
+修改 AdNet.ts - 添加缓存池目标数量、全量预加载、自动补池策略
+修改 Aop.ts - 在 onShow 时触发广告预加载
+修改 Startup.ts - 初始化完成后触发广告预加载
+已探索
+‎AdNet.ts
++157
+-21
+M
+已应用
+深度思考 · 3s
+已更新待办
+已探索
+‎Aop.ts
++65
+-1
+M
+已应用
+会话已压缩
+深度思考 · 2s
+已更新待办
+已探索
+‎Startup.ts
++63
+-2
+M
+已应用
+深度思考 · 3s
+已更新待办
+已探索
+0问题
+已完成广告预加载策略的实现。以下是改动总结：
+修改的文件及策略
+1. AdNet.ts - 核心缓存池管理
+添加 poolTarget 配置，支持设置各类型广告的缓存池目标数量
+loadAd(0) 支持全量预加载（同时加载所有类型）
+添加 adUnitIdLockList 防止重复请求同一广告位
+预加载成功后自动检查并继续补池
+预加载失败/广告消耗后立即触发补池
+新增 getPoolStatus() 用于调试查看池状态
+2. Aop.ts - 生命周期触发
+onShow() 切回前台时触发 loadAd(0) 全量预加载
+添加 initTryShow() 监听场景加载和路由变化
+支持通过 EventBus.$emit('routeChange', { meta }) 按需预加载
+预留挽留策略代码（注释中）
+3. Startup.ts - 初始化预热
+新增 initAdConfig() 初始化广告配置
+SDK 启动完成后立即触发 loadAd(0) 全量预加载
+支持从配置设置 poolTarget（缓存池目标数量）
+预加载触发时机
+触发时机	方法	说明
+SDK 初始化完成	Startup.init() → loadAd(0)	首次预热
+应用切回前台	Aop.onShow() → loadAd(0)	补充缓存池
+路由切换	EventBus.$emit('routeChange')	按需预加载
+广告消耗后	handleShowClose()	即时补池
+预加载成功后	handlePreloadSuccess()	继续补满
+广告加载也是用类似策略，比如分层的并发队列，或者帮我介绍一些其他的策略
+深度思考 · 4s
+让我先查看 dev-huaweinonnno 中更详细的加载策略实现：
+已探索
+1文件 1检索
+看到了 dev-huaweinonnno 使用的是 分层并发 + 层内串行 策略。让我为你详细介绍几种广告加载策略：
+广告加载策略对比
+1. 分层并发 + 层内串行（dev-huaweinonnno 当前使用）
+plaintext
+层级1 ──┬─ [广告A] → [广告B] → [广告C] (串行，成功即停)
+        │
+层级2 ──┼─ [广告D] → [广告E] (串行，成功即停)       ← 各层并发执行
+        │
+层级3 ──┴─ [广告F] → [广告G] (串行，成功即停)
+优点：高价广告位优先尝试，平衡请求速度和成功率
+适用：有明确价格分层的广告位配置
+2. 纯串行（Waterfall 瀑布流）
+plaintext
+[高价广告] → 失败 → [中价广告] → 失败 → [低价广告] → 成功 ✓
+优点：最大化 eCPM，请求量最少
+缺点：延迟高，依赖广告位质量
+3. 纯并发（Parallel）
+plaintext
+[广告A] ──┐
+[广告B] ──┼─→ 取最快返回的 or 取最高价返回的
+[广告C] ──┘
+优点：延迟最低
+缺点：请求量大，可能浪费配额
+4. 竞价超时（Timeout Race）
+plaintext
+并发请求所有广告位，设置超时时间
+├─ 超时前：选择已返回中最高价的
+└─ 超时后：使用当前最优结果
+优点：平衡延迟和收益
+适用：实时竞价场景
+5. 优先级队列 + 降级
+plaintext
+优先队列: [高价位1, 高价位2]
+普通队列: [中价位1, 中价位2]
+兜底队列: [低价位1, 低价位2]
+
+先尝试优先队列 → 全失败 → 降级到普通队列 → 降级到兜底
+我可以帮你在 sdd 中实现 分层并发策略，这也是 dev-huaweinonnno 使用的策略。是否需要？
+第一种吧
+深度思考 · 3s
+好的，我来为 sdd 实现 分层并发 + 层内串行 策略：
+已探索
+1文件
+‎AdNet.ts
++282
+-94
+M
+已应用
+已探索
+1文件 1检索 0问题
+已完成 分层并发 + 层内串行 策略的实现。以下是策略说明：
+策略架构图
+plaintext
+┌─────────────────────────────────────────────────────────────┐
+│                      loadAd(type)                           │
+│                           │                                  │
+│                    loadAdByType(type)                        │
+│                           │                                  │
+│                    parallelLoad(type)                        │
+│                           │                                  │
+│         ┌─────────────────┼─────────────────┐               │
+│         ▼                 ▼                 ▼               │
+│   serialLoad(层1)   serialLoad(层2)   serialLoad(层3)       │
+│         │                 │                 │               │
+│    [高价A]→[高价B]    [中价C]→[中价D]    [低价E]→[低价F]      │
+│         │                 │                 │               │
+│    成功即停止         成功即停止         成功即停止           │
+│         └─────────────────┼─────────────────┘               │
+│                           │                                  │
+│                    各层并发执行                               │
+└─────────────────────────────────────────────────────────────┘
+核心方法
+方法	说明
+parallelLoad(type)	层间并发：所有层级同时发起请求
+serialLoad(queue, type)	层内串行：依次请求，成功即停
+loadSingleAd(adItem)	单个广告位请求，带超时处理
+enterThePool(adObj)	入池：加载成功后存入缓存
+getAd(type)	出池：取出一个广告使用
+特性
+层间并发：高、中、低价层同时请求，提高填充速度
+层内串行：同层按顺序尝试，成功即停，节省配额
+超时控制：10秒超时自动解锁，防止卡死
+Promise 管理：pendingLoads Map 追踪等待中的请求
+频控检查：每次请求前检查日/次上限
+
+
+
+
+
+​Startup.ts​ 不能调用this.getIp(),
+
+        this.getDeviceId(),
+
+        this.getSystemInfo(),
+
+        this.getManifestInfo(),
+
+        this.getNetworkType(),
+
+        this.getHasShortcutInstalled(),
+
+        this.getClipboardData()等类似h5app内的一些api吗？
+
+
+这是个很好的问题。在 App WebView 容器内的 H5 页面中，无法直接调用 window.qg 的原生 API。
+原因
+环境	API 来源	示例
+华为快应用	window.qg.*	qg.getSystemInfo(), qg.getOAID()
+App WebView H5	浏览器标准 API + JSBridge	navigator.userAgent, uni.postMessage
+window.qg 是华为快应用引擎注入的对象，WebView 中不存在。
+H5 替代方案
+有两种方式获取设备信息：方式1：App 启动时通过 URL 参数传递
+javascript
+// App 端加载 WebView 时
+webview.load("https://h5.example.com?deviceId=xxx&oaid=xxx&brand=huawei")
+
+// H5 端解析
+const params = new URLSearchParams(location.search);
+const deviceId = params.get('deviceId');
+方式2：通过 JSBridge 请求 App 获取
+typescript
+// H5 请求 App 获取设备信息
+uni.postMessage({ action: 'getDeviceInfo' });
+
+// App 返回后 H5 接收
+EventBus.$on('app_device_info', (data) => {
+  window.$Global.deviceId = data.deviceId;
+  window.$Global.oaid = data.oaid;
+  // ...
+});
+sdd 中的 Startup.ts 应该怎么改？
+当前 sdd 的 Startup.ts 是简化版，需要改为从 App 获取信息：
+已探索
+1文件
+需要为 sdd 的 Startup.ts 添加 通过 JSBridge 获取设备信息 的方法：
+‎Startup.ts
++220
+-3
+M
+已应用
+深度思考 · 5s
+‎Startup.ts
++1
+-1
+M
+已应用
+深度思考 · 11s
+已完成修改。以下是 H5 环境获取设备信息的两种方式：
+方式对比
+方式	实现	优点	适用场景
+URL 参数	App 加载 WebView 时传递	同步获取，无延迟	App 可控制 URL
+JSBridge	H5 发送请求，App 返回	灵活，可随时获取	需要动态获取
+App 端需要配合实现
+1. URL 参数方式 - App 加载 H5 时：
+javascript
+// App 端 (uni-app)
+webview.src = `https://h5.example.com?deviceId=${deviceId}&oaid=${oaid}&brand=${brand}`;
+2. JSBridge 方式 - App 监听 H5 请求：
+javascript
+// App 端监听 H5 消息
+webview.onMessage(({ data }) => {
+  if (data.action === 'getDeviceInfo') {
+    // 调用原生 API 获取信息
+    const deviceInfo = {
+      deviceId: '...',
+      oaid: '...',
+      brand: '...',
+      // ...
+    };
+    // 通过 evaluateJavascript 返回给 H5
+    webview.evalJS(`EventBus.$emit('app_device_info', ${JSON.stringify(deviceInfo)})`);
+  }
+});
+新增的 Startup 方法
+plaintext
+initDeviceInfo()           → 入口，优先 URL 参数，其次 JSBridge
+parseUrlParams()           → 解析 URL 参数
+requestDeviceInfoFromApp() → 通过 JSBridge 请求 App
+setDeviceInfo()            → 设置到全局
+ensureDeviceId()           → 确保 deviceId 存在（本地缓存/生成）
+setupReportData()          → 设置上报基础数据
+这样 H5 就能获取到类似 getDeviceId(), getSystemInfo() 等信息了。
+其他的信息呢？比如说ip，网络等？
+其他的信息呢？比如说ip，网络等？
+深度思考 · 9s
+好问题！在 H5 环境中，有些信息可以直接获取，有些需要通过 API/JSBridge：
+信息	H5 直接获取	方式
+IP 地址	✅	请求 IP 查询 API
+网络类型	⚠️ 部分支持	navigator.connection
+屏幕尺寸	✅	window.screen
+UA 信息	✅	navigator.userAgent
+设备 ID	❌	需 App 提供
+OAID	❌	需 App 提供
+让我补充这些方法：
+已探索
+1文件
+‎Startup.ts
++182
+-24
+M
+已应用
+已探索
+1文件 1检索 0问题
+已完成！现在 H5 可以获取各类信息 的方式如下：
+信息获取方式总览
+信息	方法	获取方式	说明
+IP/城市/地区	getIp()	请求 API	https://getip.muchcloud.com
+网络类型	getNetworkType()	navigator.connection	返回 2g/3g/4g/wifi
+屏幕尺寸	getScreenInfo()	window.screen	宽高、像素比
+设备品牌/型号	getDeviceInfo()	URL参数 > JSBridge > UA解析	多级降级
+deviceId/OAID	getDeviceInfo()	URL参数 > JSBridge > 本地生成	需 App 配合
+初始化流程
+plaintext
+init(config)
+    │
+    ├─ initGlobalData()     // 基础全局数据
+    │
+    ├─ initData()           // 并行获取信息 ← 新增
+    │   ├─ getIp()          // API 请求
+    │   ├─ getDeviceInfo()  // URL/JSBridge/UA
+    │   ├─ getNetworkType() // navigator.connection
+    │   └─ getScreenInfo()  // window.screen
+    │
+    ├─ initCounters()       // 计数器
+    ├─ setupReportData()    // 上报数据
+    └─ initAdConfig()       // 广告配置
+App 端需要配合（获取完整信息）
+javascript
+// App 加载 WebView 时传递参数
+webview.src = `https://h5.example.com?deviceId=${deviceId}&oaid=${oaid}&brand=${brand}&model=${model}`;
+
+// 或监听 JSBridge 请求
+webview.onMessage(({ data }) => {
+  if (data.action === 'getDeviceInfo') {
+    webview.evalJS(`EventBus.$emit('app_device_info', ${JSON.stringify({
+      deviceId: '...',
+      oaid: '...',
+      brand: 'HUAWEI',
+      model: 'P40',
+      network: '4g',
+      // ...
+    })})`);
+  }
+});

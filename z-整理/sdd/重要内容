@@ -1,0 +1,822 @@
+详细给我解释抽离出这个adnet的原因以及各个变量的作用，函数的作用，以及这个1的策略我来帮你详细解释 AdNet.ts 文件。首先让我查看这个文件的内容。已查看AdNet.ts现在让我查看相关的上下文文件，以便更全面地解释：已探索2文件已查看Startup.ts已查看index.ts好的，现在我来详细解释 AdNet.ts 的设计原因和各个部分的作用：📋 抽离 AdNet 的核心原因将广告网络管理独立成 AdNet.ts 是为了实现 职责分离 和 代码复用，主要解决以下问题：复杂的广告缓存池管理 - 需要维护广告对象、锁机制、竞价排序等复杂逻辑串并行请求策略 - 需要协调多层级、多平台的广告请求频控策略集中管理 - 统一处理日请求上限、启动请求上限等限制实时竞价处理 - 处理竞价广告的入池、出池、通知等逻辑🔧 核心变量详解1️⃣ 实例与缓存相关typescriptprivate static instance: AdNet;           // 单例实例
+private adRVCacheList: Array<any> = [];   // 激励视频缓存池（已加载的广告对象）
+private storeyData: Array<any> = [];      // 广告队列配置（从服务器获取的广告位配置）2️⃣ 锁机制typescriptprivate adUnitIdLockList: Map<string, number> = new Map();  
+// 广告位ID锁定池 - 防止同一广告位并发请求3️⃣ 请求状态控制typescriptprivate isRequestLoadAd: boolean = false;   // 请求状态标志（防止并发请求）
+private loadAdCount: number = 0;            // 总请求次数（用于追踪上报）
+private loadRVAdCount: number = 0;          // 激励视频请求次数（用于启动频控）
+private nowLoadModeCount: number = 1;       // 当前请求轮次（标识请求批次）🎯 核心函数解析1. parallelLoad() - 并行加载typescriptprivate parallelLoad()作用：并行处理多个广告层级（storeyData数组中的每个层级）过滤已锁定的广告位随机打乱广告位顺序根据 rand_num 限制每层选择的广告位数量调用 serialLoad 串行处理每层内的广告位2. serialLoad() - 串行加载typescriptprivate async serialLoad(arr)作用：串行加载单层内的多个广告位逐个调用 loadRewardedVideoAd 请求广告满足以下条件之一时停止：有广告成功加载 (res 为真)超时后有广告入池 (o.timeoutHaveAd)缓存池达到上限 (ADnumbers)3. loadRewardedVideoAd() - 单个广告请求typescriptpublic loadRewardedVideoAd(adItem, afterObj, preCount)作用：请求单个广告位的激励视频创建 qg.createRewardedVideoAd 对象使用 Promise.race 处理超时逻辑（adResqGaptime）解析 ECPM 价格（竞价广告）判断是否入池（非竞价或竞价价格 ≥ 底价）上报请求结果4. enterThePool() - 入池typescriptprivate enterThePool(adObj)作用：将广告对象加入缓存池特殊逻辑：如果 ADnumbers=0 且 referer=ym01 且池中已有1个广告，则通知失败并销毁（实时请求模式）按价格降序排序（price 高的在前）5. getAd() - 出池typescriptpublic getAd()作用：从缓存池取出最高价广告通知竞价成功（notifyAdRankWin）触发新的广告请求（loadAd）6. loadAd() - 请求广告typescriptpublic async loadAd(type?: number)作用：入口函数，触发广告请求频控检查：是否正在请求应用是否在后台日请求上限（ADdayrequest）启动请求上限（ADbootrequest）缓存池上限（ADnumbers）调用 parallelLoad 执行请求递归逻辑：如果池未满继续请求🔢 关于 loadAd(1) 的策略参数 1 的含义typescriptpublic async loadAd(type?: number)在代码中有两处关键判断：第一处（第173-178行）typescriptif (
+  adNums1 == 0 &&                           // 缓存池上限为0（实时请求模式）
+  (!type || this.adRVCacheList.length > 0) && // 没有传type或已有广告
+  window.Global.referer == "ym01"           // 推广链路
+) {
+  return; // 不请求
+}第二处（第202-204行）typescriptif (adNums1 == 0 && !this.adRVCacheList.length) {
+  this.loadAd(1);  // 传入type=1，强制继续请求
+}策略解释 场景  ADnumbers  缓存池状态  是否传 type=1  行为  预加载模式  > 0  < ADnumbers  ❌  正常填充池  实时请求模式  0  0个广告  ✅ 传1  允许请求  实时请求模式  0  已有1个  ❌  拒绝请求（避免囤积） 核心目的：ADnumbers=0 时启用"实时请求"策略（每次调用 getAd 才请求）type=1 作为强制标志，绕过"已有广告时禁止请求"的限制确保实时模式下始终只有0或1个广告在池中📊 完整流程图plaintextindex.ts 调用
+    ↓
+loadAd(type?) ← 频控检查
+    ↓
+parallelLoad() ← 并行处理多层
+    ↓
+serialLoad(layer) ← 串行处理单层
+    ↓
+loadRewardedVideoAd() ← 请求单个广告位
+    ↓
+enterThePool() ← 按价格排序入池
+    ↓
+getAd() ← 取出最高价广告 → 通知竞价成功 → 触发新请求💡 设计亮点串并结合：层级间并行、层内串行，平衡效率与精细控制实时竞价支持：自动解析 ECPM、处理竞价通知双模式支持：ADnumbers > 0：预加载模式（池化管理）ADnumbers = 0：实时模式（用时请求）完善的频控：日/启动/缓存池三重限制超时兜底：Promise.race 确保不阻塞后续请求如果还有疑问，可以继续询问具体某个函数或变量的细节！这个锁机制给出个小例子这个锁机制给出个小例子我来给你演示一下 AdNet 中锁机制的工作原理：🔒 锁机制核心代码typescript// AdNet.ts 中的关键部分
+private adUnitIdLockList: Map<string, number> = new Map(); // 广告位锁池
+
+// 🔐 加锁 - 在请求广告时
+public loadRewardedVideoAd(adItem, afterObj, preCount) {
+  // ...
+  this.adUnitIdLockList.set(adUnitId, 1);  // 🔒 锁定该广告位
+  // ...
+}
+
+// 🔓 解锁 - 在广告使用完毕时
+public unLockAdUnitId(adUnitId) {
+  this.adUnitIdLockList.delete(adUnitId);  // 🔓 释放锁
+}
+
+// 🚫 过滤已锁定的广告位
+private parallelLoad() {
+  let adQueue = this.storeyData.map((el) => {
+    let queue = [];
+    el.platform_list.forEach((ele) => {
+      let arr = ele.adid_list.filter(
+        (elem) => !this.adUnitIdLockList.has(elem.adUnitId)  // ✅ 跳过已锁定
+      );
+      // ...
+    });
+    return queue;
+  });
+}📝 具体场景示例场景：同时请求3个广告位typescript// 假设服务器配置了3个广告位ID
+storeyData = [
+  {
+    platform_list: [{
+      adid_list: [
+        { adUnitId: "ad001", price: 10 },
+        { adUnitId: "ad002", price: 15 },
+        { adUnitId: "ad003", price: 12 }
+      ]
+    }]
+  }
+];时间线演示plaintextT0: 启动广告请求 loadAd()
+    ↓
+    adUnitIdLockList = {} (空)
+
+T1: parallelLoad() 开始
+    ↓
+    过滤锁定广告位：ad001 ❌未锁定 ✅可用
+                    ad002 ❌未锁定 ✅可用
+                    ad003 ❌未锁定 ✅可用
+    ↓
+    并行请求 [ad001, ad002, ad003]
+
+T2: ad001 开始请求
+    ↓
+    🔒 adUnitIdLockList.set("ad001", 1)
+    adUnitIdLockList = { "ad001": 1 }
+
+T3: ad002 开始请求
+    ↓
+    🔒 adUnitIdLockList.set("ad002", 1)
+    adUnitIdLockList = { "ad001": 1, "ad002": 1 }
+
+T4: ad003 开始请求
+    ↓
+    🔒 adUnitIdLockList.set("ad003", 1)
+    adUnitIdLockList = { "ad001": 1, "ad002": 1, "ad003": 1 }
+
+T5: ad002 加载成功，入池
+    ↓
+    广告对象进入 adRVCacheList
+    ⚠️ 注意：此时不解锁！保持锁定状态
+
+T6: 用户调用 getAd() 取出广告
+    ↓
+    从池中取出 ad002 广告对象
+    ↓
+    展示广告
+    ↓
+    广告关闭后调用 unLockAdUnitId("ad002")
+    ↓
+    🔓 adUnitIdLockList.delete("ad002")
+    adUnitIdLockList = { "ad001": 1, "ad003": 1 }
+
+T7: 再次调用 loadAd() 补充广告
+    ↓
+    parallelLoad() 过滤：
+    ad001 ❌已锁定 🚫跳过
+    ad002 ✅未锁定 ✅可用（已解锁可再次请求）
+    ad003 ❌已锁定 🚫跳过
+    ↓
+    只请求 [ad002]🎯 锁机制的作用1️⃣ 防止重复请求typescript// ❌ 没有锁机制的后果
+loadAd() → 请求 ad001
+         → 请求 ad001  (重复！浪费资源)
+         → 请求 ad001  (重复！)
+
+// ✅ 有锁机制
+loadAd() → 请求 ad001 → 🔒锁定
+         → 过滤 ad001 (已锁定，跳过)2️⃣ 保护正在使用的广告typescript// 广告在缓存池中时保持锁定
+adRVCacheList = [
+  { adUnitId: "ad001", ad: {...} }  // 🔒 ad001 保持锁定
+]
+
+// 直到广告展示完毕才解锁
+videoAd.ad.onClose(() => {
+  unLockAdUnitId("ad001");  // 🔓 释放，可再次请求
+});3️⃣ 避免并发冲突typescript// 第一轮请求
+loadAd() → 并行请求 [ad001, ad002, ad003] → 全部🔒
+
+// 第二轮请求（第一轮未完成时）
+loadAd() → 过滤所有已锁定 → 🚫无广告位可请求 → 避免冲突🔍 实际调试示例假设你在控制台看到这样的日志：javascript[parallelLoad][adQueue] [
+  [ 
+    { adUnitId: "123", price: 10 },  // ✅ 未锁定，会请求
+    { adUnitId: "456", price: 15 }   // ✅ 未锁定，会请求
+    // adUnitId "789" 已锁定被过滤
+  ]
+]
+
+[loadRewardedVideoAd] adUnitId: 123  // 🔒 锁定
+[loadRewardedVideoAd] adUnitId: 456  // 🔒 锁定
+
+[enterThePool] ECPM: 15  // ad456 入池
+[getAd] 取出广告 ad456
+[adclose][end]           // 广告关闭
+[unLockAdUnitId] 789     // 🔓 解锁
+
+[parallelLoad][adQueue] [
+  [ 
+    { adUnitId: "789", price: 12 }   // ✅ 已解锁，可再次请求
+    // 123, 456 仍在使用中被过滤
+  ]
+]💡 设计精髓 时机  操作  目的  请求开始  🔒 set(adUnitId, 1)  标记"正在处理"  加载成功/失败但未入池  🔓 delete(adUnitId)  允许重试  入池成功  ⏳ 保持锁定  保护缓存中的广告  展示完毕  🔓 delete(adUnitId)  释放资源 这个锁机制确保了每个广告位在同一时刻只有一个"活跃"的请求/对象，避免了资源浪费和状态混乱！开始阶段就加载广告进入激励视频缓存池，然后使用其中的激励视频，就给他设置一个id锁，防止后续加载重复激励视频，使用完后解锁，让后续可以继续用？开始阶段就加载广告进入激励视频缓存池，然后使用其中的激励视频，就给他设置一个id锁，防止后续加载重复激励视频，使用完后解锁，让后续可以继续用？是的！你理解得完全正确！👍 让我用更清晰的方式总结一下这个流程：🎯 完整生命周期plaintext启动阶段
+   ↓
+📥 loadAd() 批量请求广告
+   ↓
+🔒 每个广告位ID加锁（防止重复请求）
+   ↓
+✅ 加载成功 → 📦 进入缓存池 adRVCacheList（保持锁定）
+   ↓
+🎬 用户触发 getAd() 取出广告
+   ↓
+📺 展示激励视频
+   ↓
+❌ 广告关闭/销毁
+   ↓
+🔓 unLockAdUnitId() 解锁该广告位ID
+   ↓
+✅ 该广告位可以再次被请求加载🔐 锁的三个关键状态1️⃣ 加锁时机：开始请求时typescript// AdNet.ts 第231行
+loadRewardedVideoAd(adItem, afterObj, preCount) {
+  this.adUnitIdLockList.set(adUnitId, 1);  // 🔒 立即锁定
+  
+  let videoAd = window.qg.createRewardedVideoAd({ adUnitId });
+  videoAd.load();
+  // ...
+}2️⃣ 保持锁定：在缓存池中typescript// AdNet.ts 第112行 - 入池后不解锁
+enterThePool(adObj) {
+  this.adRVCacheList = this.adRVCacheList.concat(adObj);
+  // ⚠️ 注意：这里不调用 unLockAdUnitId，保持锁定状态
+}3️⃣ 解锁时机：使用完毕后typescript// index.ts 第321行 - 广告关闭时
+videoAd.ad.onClose((res) => {
+  // ... 处理广告结果
+  AdNet.GetInstance().unLockAdUnitId(videoAd.adUnitId); // 🔓 解锁
+  videoAd.ad.offClose();
+  videoAd.ad.destroy();
+});📊 实际案例演示假设有 3 个广告位：ad001, ad002, ad003javascript// ============ 启动时 ============
+console.log('开始加载广告');
+
+loadAd() 
+  ↓
+parallelLoad() 检查锁池：
+  adUnitIdLockList = {}  // 空的，都可以请求
+  ↓
+请求 ad001 → 🔒 锁定 → ✅ 加载成功 → 📦 入池 [ad001]
+请求 ad002 → 🔒 锁定 → ✅ 加载成功 → 📦 入池 [ad001, ad002]
+请求 ad003 → 🔒 锁定 → ❌ 加载失败 → 🔓 立即解锁
+
+当前状态：
+  adRVCacheList = [ad001对象, ad002对象]
+  adUnitIdLockList = { "ad001": 1, "ad002": 1 }  // ad003已解锁
+
+
+// ============ 5秒后再次请求 ============
+loadAd()
+  ↓
+parallelLoad() 检查锁池：
+  ad001 → ❌ 已锁定 → 🚫 跳过
+  ad002 → ❌ 已锁定 → 🚫 跳过
+  ad003 → ✅ 未锁定 → 可以请求
+  ↓
+只请求 ad003 → 🔒 锁定 → ✅ 成功 → 📦 入池
+
+当前状态：
+  adRVCacheList = [ad001对象, ad002对象, ad003对象]
+  adUnitIdLockList = { "ad001": 1, "ad002": 1, "ad003": 1 }
+
+
+// ============ 用户点击按钮展示广告 ============
+getAd()
+  ↓
+取出最高价广告（假设是 ad002）
+  ↓
+show() 展示广告
+  ↓
+用户观看完毕，关闭广告
+  ↓
+onClose 回调触发
+  ↓
+unLockAdUnitId("ad002") → 🔓 解锁
+
+当前状态：
+  adRVCacheList = [ad001对象, ad003对象]  // ad002已被取出
+  adUnitIdLockList = { "ad001": 1, "ad003": 1 }  // ad002已解锁
+
+
+// ============ 立即再次加载 ============
+loadAd()
+  ↓
+parallelLoad() 检查锁池：
+  ad001 → ❌ 已锁定 → 🚫 跳过
+  ad002 → ✅ 未锁定 → ✅ 可以再次请求！
+  ad003 → ❌ 已锁定 → 🚫 跳过
+  ↓
+请求 ad002 → 🔒 重新锁定 → ✅ 成功 → 📦 再次入池
+
+当前状态：
+  adRVCacheList = [ad001对象, ad003对象, ad002对象]
+  adUnitIdLockList = { "ad001": 1, "ad002": 1, "ad003": 1 }🎨 状态图plaintext  广告位 ad001 的生命周期
+  
+  ┌──────────┐
+  │ 未锁定    │
+  │ 可请求    │
+  └─────┬────┘
+        │ loadRewardedVideoAd()
+        ↓
+  ┌──────────┐
+  │ 🔒 已锁定  │
+  │ 正在加载  │
+  └─────┬────┘
+        │ 加载成功
+        ↓
+  ┌──────────┐
+  │ 🔒 已锁定  │
+  │ 在缓存池  │ ← 保持锁定状态
+  └─────┬────┘
+        │ getAd()
+        ↓
+  ┌──────────┐
+  │ 🔒 已锁定  │
+  │ 正在展示  │
+  └─────┬────┘
+        │ onClose()
+        ↓
+  ┌──────────┐
+  │ 🔓 解锁    │
+  │ 可再请求  │ ← 回到初始状态
+  └──────────┘💡 核心设计优势 问题  没有锁机制  有锁机制  重复请求  ✅ 同一广告位可能被请求多次  ❌ 被锁定，无法重复请求  资源浪费  ✅ 缓存池可能有多个相同广告位  ❌ 每个广告位最多1个实例  对象冲突  ✅ 多个广告对象相互干扰  ❌ 唯一性保证  复用能力  ❌ 无法复用已用过的广告位  ✅ 解锁后可再次请求 ✅ 你的理解总结你的理解完全正确：✅ 启动阶段加载 → 广告对象进入缓存池✅ 加锁防重复 → 避免同一广告位被重复请求✅ 使用时保持锁定 → 保护正在使用的广告✅ 使用后解锁 → 允许该广告位后续继续使用这就是一个典型的 资源池 + 锁机制 的设计模式，确保资源的高效利用和安全管理！🎯adnet实现激励视频的请求入池。apo对其进行使用？adnet实现激励视频的请求入池。apo对其进行使用？让我查看一下 Aop.ts 文件，看看它是如何使用 AdNet 提供的激励视频的：已查看Aop.ts完美！现在我来详细解释 AdNet 与 Aop 的分工协作：🏗️ 架构分层plaintext┌─────────────────────────────────────┐
+│         index.ts (入口层)            │
+│  初始化、启动场景广告展示             │
+└──────────┬─────────────┬────────────┘
+           │             │
+           ↓             ↓
+┌──────────────┐  ┌─────────────────┐
+│   AdNet.ts   │  │    Aop.ts       │
+│  (广告资源层) │  │  (应用切面层)    │
+│              │  │                 │
+│ • 通用广告池  │  │ • 切后台场景     │
+│ • 请求管理    │  │ • 召回广告池     │
+│ • 频控策略    │  │ • 特定触发      │
+└──────────────┘  └─────────────────┘📦 AdNet.ts - 通用广告资源管理职责：统一的广告请求和缓存typescript// AdNet.ts
+export default class AdNet {
+  private adRVCacheList: Array<any> = [];  // 📦 通用广告缓存池
+  
+  // 🔧 核心功能：
+  // 1. 请求广告
+  public async loadAd(type?: number) {
+    await this.parallelLoad();  // 串并行请求
+    // 频控检查、超时处理、竞价排序...
+  }
+  
+  // 2. 提供广告（出池）
+  public getAd() {
+    let ad = this.adRVCacheList.shift();  // 取出最高价广告
+    // 通知竞价成功、解锁...
+    this.loadAd();  // 自动补充
+    return ad;
+  }
+  
+  // 3. 解锁广告位
+  public unLockAdUnitId(adUnitId) {
+    this.adUnitIdLockList.delete(adUnitId);
+  }
+}使用场景：✅ 启动阶段预加载（index.ts 第162行）✅ 用户主动看广告（index.ts 第210行 ShowRewardVideo）✅ 切后台补充广告（Aop.ts 第24行）🎭 Aop.ts - 切后台召回场景职责：切后台时的广告召回逻辑typescript// Aop.ts
+var rewardVideoAdIns = [];  // 📦 召回专用广告池（独立于 AdNet）
+
+export default {
+  // 🔄 监听切前台
+  onShow() {
+    tryShowPreloadedAd();  // 尝试展示召回广告
+    AdNet.GetInstance().loadAd();  // 补充 AdNet 通用池
+  },
+  
+  // 🔄 监听切后台
+  async onHide() {
+    tryShowPreloadedAd();  // 立即尝试展示
+  }
+}
+
+// 核心逻辑：从 AdNet 通用池取广告或使用独立召回池
+function tryShowPreloadedAd() {
+  // 检查召回次数限制
+  if (hcount >= +(window.Global?.initialize?.recalltimes || 0)) return;
+  
+  // 平台版本 >= 1170：使用独立召回池
+  if (platformVersion >= 1170) {
+    if (rewardVideoAdIns.length <= 1) {
+      loadBackApp();  // 补充独立池
+    }
+    if (window.Global.isHide && !window.Global.isShowRV) {
+      showPreloadedAd();  // 从独立池取广告
+    }
+  } 
+  // 平台版本 < 1170：直接使用 AdNet 通用池
+  else {
+    playVad(AdNet.GetInstance().getAd());  // ← 直接从 AdNet 取
+  }
+}🔄 两者协作流程场景1：启动阶段（通用场景）javascript// index.ts 第160行
+await Startup.GetInstance().initApp();
+  ↓
+AdNet.GetInstance().loadAd();  // 填充通用池
+  ↓
+adRVCacheList = [ad001, ad002, ad003]  // AdNet 缓存池
+
+// 用户点击按钮看广告
+ShowRewardVideo(onSuccess, onFail)
+  ↓
+videoAd = window.$AdNet.getAd();  // 从 AdNet 取广告
+  ↓
+展示 → 关闭 → unLockAdUnitId()场景2：切后台召回（特殊场景）A. 平台版本 < 1170（直接使用 AdNet）javascript// 用户按Home键切后台
+Aop.onHide() 触发
+  ↓
+tryShowPreloadedAd()
+  ↓
+playVad(AdNet.GetInstance().getAd())  // ← 直接从 AdNet 通用池取
+  ↓
+展示广告 → hcount += 1
+  ↓
+关闭后：lockUId.delete(adUnitId)  // Aop 自己的锁B. 平台版本 >= 1170（使用独立召回池）javascript// 启动时预加载召回专用广告
+window.Global.adSeriesData = [ad999, ad888]  // 从 Startup.ts 获取
+
+// 用户按Home键切后台
+Aop.onHide() 触发
+  ↓
+tryShowPreloadedAd()
+  ↓
+if (rewardVideoAdIns.length <= 1) {
+  loadBackApp() → createMultipleVideoAd()  // 填充独立池
+}
+  ↓
+showPreloadedAd()
+  ↓
+vad = rewardVideoAdIns.shift()  // 从独立池取
+  ↓
+展示广告 → hcount += 1
+  ↓
+关闭后：lockUId.delete(adUnitId)  // Aop 自己的锁
+
+// 同时补充 AdNet 通用池
+Aop.onShow()
+  ↓
+AdNet.GetInstance().loadAd()  // 补充通用池📊 两个缓存池对比 特性  AdNet.adRVCacheList  Aop.rewardVideoAdIns  用途  通用广告池  召回专用池（仅 >= 1170）  广告来源  storeyData（完整配置）  adSeriesData（前N个广告位）  管理者  AdNet  Aop  锁机制  adUnitIdLockList  lockUId  使用场景  启动、主动看广告  切后台召回  频控  ADnumbers, ADbootrequest  recalltimes 🎯 为什么需要两个池？1️⃣ 职责分离typescriptAdNet  → 负责"广告资源的统一管理"（资源层）
+Aop    → 负责"切后台召回的业务逻辑"（应用层）2️⃣ 配置隔离typescript// AdNet 配置（来自 adSpeciality）
+ADnumbers: 3,           // 通用池上限
+ADbootrequest: 50,      // 启动请求上限
+ADdayrequest: 100       // 日请求上限
+
+// Aop 配置（来自 initialize）
+recalltimes: "2",       // 召回次数上限
+firstScene: true        // 是否启用召回3️⃣ 避免冲突typescript// 如果只用一个池：
+AdNet.getAd() → 通用场景取走 ad001
+Aop 切后台    → 想用 ad001，但已被取走 ❌
+
+// 两个池方案：
+AdNet.getAd()          → 从通用池取 ad001
+Aop 切后台             → 从独立池取 ad999 ✅🔗 完整调用链路plaintext用户操作                AdNet                  Aop
+   │                     │                     │
+启动游戏 ───────────────→ loadAd()              │
+   │                 填充缓存池                │
+   │                     │                     │
+点击按钮 ───────────────→ getAd() ──────────→ ✅ 
+   │                 返回广告                  │
+   │                     │                     │
+切后台   ───────────────────────────────────→ onHide()
+   │                     │              tryShowPreloadedAd()
+   │                     │                     │
+   │                     │                < 1170: 调用 AdNet.getAd()
+   │                     │                >= 1170: 使用 rewardVideoAdIns
+   │                     │                     │
+切前台   ───────────────────────────────────→ onShow()
+   │                     │              tryShowPreloadedAd()
+   │                     ←─────────── loadAd() 补充通用池✅ 总结你的理解完全正确： 模块  职责  缓存池  AdNet  实现激励视频的请求和入池  adRVCacheList  Aop  使用广告（切后台场景）  rewardVideoAdIns（独立）  index.ts  使用广告（启动/主动场景）  直接调用 AdNet.getAd() 核心设计：✅ AdNet 作为资源提供者，封装复杂的请求逻辑✅ Aop 作为业务消费者，处理切后台召回场景✅ 两个池互不干扰，各司其职这就是典型的分层架构 + 资源池模式！🎯​AdNet.ts 150-150​ 并行是为了并行qg请求激励视频入激励视频池吧​AdNet.ts 150-150​ 并行是为了并行qg请求激励视频入激励视频池吧是的！你理解得非常准确！让我详细解释：🎯 并行的核心目的typescript// AdNet.ts 第55-85行
+private parallelLoad() {
+  // 构建广告队列（多层级）
+  let adQueue = this.storeyData.map((el) => {
+    // 每层过滤、打乱、选择广告位
+    // ...
+  });
+  
+  // 🔥 关键：Promise.all 并行执行多层
+  return new Promise((resolve, reject) => {
+    Promise.all(adQueue.map((el) => this.serialLoad(el)))  // ← 并行
+      .then((res) => resolve(true))
+      .catch((err) => reject(err));
+  });
+}📊 并行结构图plaintextloadAd() 调用
+   ↓
+parallelLoad() 启动
+   ↓
+Promise.all([
+   ├─ serialLoad(第1层) ───→ qg.createRewardedVideoAd({adUnitId: "ad001"})
+   │                        qg.createRewardedVideoAd({adUnitId: "ad002"})
+   │                        ↓
+   │                        入池 adRVCacheList
+   │
+   ├─ serialLoad(第2层) ───→ qg.createRewardedVideoAd({adUnitId: "ad003"})
+   │                        qg.createRewardedVideoAd({adUnitId: "ad004"})
+   │                        ↓
+   │                        入池 adRVCacheList
+   │
+   └─ serialLoad(第3层) ───→ qg.createRewardedVideoAd({adUnitId: "ad005"})
+                            ↓
+                            入池 adRVCacheList
+])  ← 所有层级同时进行
+   ↓
+全部完成后 resolve🔄 串并结合策略并行维度：层级间（parallelLoad）typescript// 假设配置了3层广告
+storeyData = [
+  { platform_list: [层1的广告位] },  // ⚡ 并行
+  { platform_list: [层2的广告位] },  // ⚡ 并行
+  { platform_list: [层3的广告位] }   // ⚡ 并行
+];
+
+// Promise.all 让3层同时请求
+Promise.all([
+  this.serialLoad(层1),  // 同时执行
+  this.serialLoad(层2),  // 同时执行
+  this.serialLoad(层3)   // 同时执行
+])串行维度：单层内（serialLoad）typescript// AdNet.ts 第28-53行
+private async serialLoad(arr) {
+  for await (const i of arr) {
+    let res = await this.loadRewardedVideoAd(i);  // ← 逐个等待
+    if (res || 满足其他条件) {
+      break;  // 有广告就停止
+    }
+  }
+}
+
+// 第1层内部是串行的：
+层1广告位: [ad001, ad002, ad003]
+           ↓
+请求 ad001 → 失败 → 继续
+           ↓
+请求 ad002 → 成功 → 停止（不再请求 ad003）💡 为什么这样设计？1️⃣ 并行加速填充池typescript// ❌ 如果完全串行（慢）
+第1层: ad001 → ad002 → 完成 (3秒)
+  ↓
+第2层: ad003 → ad004 → 完成 (3秒)
+  ↓
+第3层: ad005 → 完成 (2秒)
+总耗时: 8秒 ⏱️
+
+// ✅ 层级并行（快）
+第1层: ad001 → ad002 (3秒) ⚡
+第2层: ad003 → ad004 (3秒) ⚡ 同时进行
+第3层: ad005 (2秒)        ⚡
+总耗时: 3秒 ⏱️2️⃣ 层内串行保证质量typescript// 为什么层内要串行？
+第1层优先级高，价格贵：[ad001价格50, ad002价格45]
+  ↓
+如果 ad001 成功，就不需要 ad002（节省资源）
+  ↓
+串行可以实现"一旦成功就停止"的策略3️⃣ 快速填充缓存池typescript// 实际效果
+parallelLoad() 执行
+  ↓
+多个 qg.createRewardedVideoAd() 并行调用
+  ↓
+快速获取多个广告对象
+  ↓
+按价格排序后存入 adRVCacheList
+  ↓
+池中立即有多个广告可用 ✅🔍 实际执行示例javascript// T0: 开始请求
+console.log('[loadAd]');
+parallelLoad();
+
+// T0.1: 并行启动3个层级
+Promise.all([
+  // 层1（并行）
+  serialLoad([
+    {adUnitId: "ad001", price: 50},
+    {adUnitId: "ad002", price: 45}
+  ]),
+  
+  // 层2（并行）
+  serialLoad([
+    {adUnitId: "ad003", price: 40},
+    {adUnitId: "ad004", price: 35}
+  ]),
+  
+  // 层3（并行）
+  serialLoad([
+    {adUnitId: "ad005", price: 30}
+  ])
+])
+
+// T0.5: 层1串行执行
+// loadRewardedVideoAd(ad001) → 🔒锁定 → qg.createRewardedVideoAd()
+//   ↓ 等待加载...
+
+// T0.5: 层2并行执行（同时进行）
+// loadRewardedVideoAd(ad003) → 🔒锁定 → qg.createRewardedVideoAd()
+//   ↓ 等待加载...
+
+// T0.5: 层3并行执行（同时进行）
+// loadRewardedVideoAd(ad005) → 🔒锁定 → qg.createRewardedVideoAd()
+//   ↓ 等待加载...
+
+// T2.0: 层1 ad001 成功
+// enterThePool(ad001) → adRVCacheList = [ad001]
+// 层1停止（不再请求 ad002）
+
+// T2.5: 层2 ad003 成功
+// enterThePool(ad003) → adRVCacheList = [ad001, ad003]
+// 层2停止
+
+// T3.0: 层3 ad005 成功
+// enterThePool(ad005) → adRVCacheList = [ad001, ad003, ad005]
+
+// T3.1: 所有层级完成
+// 按价格排序 → adRVCacheList = [ad001(50), ad003(40), ad005(30)]
+console.log('[loadAd][result]', 3);  // 输出：3个广告入池✅ 总结你的理解完全正确： 问题  答案  并行目的  ✅ 并行调用多个 qg.createRewardedVideoAd()  入池目标  ✅ 快速填充 adRVCacheList 激励视频缓存池  并行层级  ✅ 多个层级间并行  串行层级  ✅ 单个层级内串行  性能优化  ✅ 最大化并发请求，缩短等待时间 核心逻辑：plaintext并行请求多层广告 → 快速获取多个激励视频 → 按价格排序入池 → 供业务随时调用这就是 Promise.all 并行 + 串行优化 的经典应用！🚀loadad是加载缓存池里的非锁id广告？loadad是加载缓存池里的非锁id广告？不完全准确！让我纠正一下：🔍 loadAd() 的真实逻辑typescript// AdNet.ts 第151-206行
+public async loadAd(type?: number) {
+  // ❌ 不是从缓存池加载广告
+  // ✅ 是向缓存池【请求并添加】广告
+  
+  // 1️⃣ 各种频控检查
+  if (this.isRequestLoadAd || window.Global.isHide || !this.storeyData.length)
+    return;
+  
+  // 2️⃣ 调用并行请求
+  this.isRequestLoadAd = true;
+  await this.parallelLoad();  // ← 这里才是真正的请求
+  this.isRequestLoadAd = false;
+  
+  // 3️⃣ 递归补充（如果池未满）
+  if (adNums1 > 0 && adNums1 > this.adRVCacheList.length) {
+    this.loadAd();  // 继续请求
+  }
+}📊 完整流程图plaintextloadAd() 被调用
+   ↓
+❓ 各种检查（频控、后台、配置）
+   ↓ 通过检查
+   ↓
+parallelLoad() ─────────────────┐
+   ↓                            │
+过滤已锁定的广告位 ←──────────┐  │
+   ↓                         │  │
+选出【未锁定】的广告位         │  │
+   ↓                         │  │
+serialLoad(层1)               │  │
+   ↓                         │  │
+loadRewardedVideoAd()         │  │
+   ↓                         │  │
+🔒 锁定广告位ID ───────────────┘  │ 锁机制
+   ↓                            │
+调用 qg.createRewardedVideoAd() │ 请求广告
+   ↓                            │
+✅ 加载成功                      │
+   ↓                            │
+enterThePool() ─────────────────┘ 入池
+   ↓
+📦 adRVCacheList.push(广告对象)
+   ↓
+按价格排序🎯 关键点澄清1️⃣ loadAd() ≠ 从池中加载typescript// ❌ 错误理解
+loadAd() → 从 adRVCacheList 中取出广告
+
+// ✅ 正确理解
+loadAd() → 请求新广告 → 添加到 adRVCacheList2️⃣ 过滤非锁ID的位置typescript// AdNet.ts 第59-68行
+private parallelLoad() {
+  let adQueue = this.storeyData.map((el) => {
+    let queue = [];
+    el.platform_list.forEach((ele) => {
+      // 🔍 这里过滤已锁定的广告位
+      let arr = ele.adid_list.filter(
+        (elem) => !this.adUnitIdLockList.has(elem.adUnitId)  // ← 过滤锁
+      );
+      arr.sort(() => Math.random() - 0.5);
+      queue = queue.concat(arr.slice(0, ele.rand_num));
+    });
+    return queue;
+  });
+  // 然后请求这些【未锁定】的广告位
+}📝 完整示例javascript// ============ 初始状态 ============
+storeyData = [
+  {
+    platform_list: [{
+      adid_list: [
+        { adUnitId: "ad001", price: 50 },
+        { adUnitId: "ad002", price: 45 },
+        { adUnitId: "ad003", price: 40 }
+      ]
+    }]
+  }
+];
+
+adRVCacheList = [];  // 空的缓存池
+adUnitIdLockList = {};  // 空的锁池
+
+
+// ============ 第一次调用 loadAd() ============
+loadAd()
+  ↓
+parallelLoad() 开始
+  ↓
+过滤已锁定的广告位：
+  ad001 → ❌ 未锁定 → ✅ 可请求
+  ad002 → ❌ 未锁定 → ✅ 可请求
+  ad003 → ❌ 未锁定 → ✅ 可请求
+  ↓
+请求队列: [ad001, ad002, ad003]
+  ↓
+loadRewardedVideoAd(ad001)
+  🔒 adUnitIdLockList.set("ad001", 1)  // 立即锁定
+  调用 qg.createRewardedVideoAd({adUnitId: "ad001"})
+  ✅ 成功 → enterThePool(ad001对象)
+  ↓
+adRVCacheList = [ad001对象]  // 入池
+adUnitIdLockList = {"ad001": 1}  // 保持锁定
+
+loadRewardedVideoAd(ad002)
+  🔒 adUnitIdLockList.set("ad002", 1)
+  ✅ 成功 → enterThePool(ad002对象)
+  ↓
+adRVCacheList = [ad001对象, ad002对象]
+adUnitIdLockList = {"ad001": 1, "ad002": 1}
+
+loadRewardedVideoAd(ad003)
+  🔒 adUnitIdLockList.set("ad003", 1)
+  ❌ 失败 → 不入池
+  🔓 unLockAdUnitId("ad003")  // 失败立即解锁
+  ↓
+adRVCacheList = [ad001对象, ad002对象]
+adUnitIdLockList = {"ad001": 1, "ad002": 1}  // ad003已解锁
+
+
+// ============ 5秒后再次调用 loadAd() ============
+loadAd()
+  ↓
+parallelLoad() 开始
+  ↓
+过滤已锁定的广告位：
+  ad001 → ✅ 已锁定 → 🚫 跳过（在缓存池中）
+  ad002 → ✅ 已锁定 → 🚫 跳过（在缓存池中）
+  ad003 → ❌ 未锁定 → ✅ 可请求（上次失败已解锁）
+  ↓
+请求队列: [ad003]  // 只请求 ad003
+  ↓
+loadRewardedVideoAd(ad003)
+  🔒 adUnitIdLockList.set("ad003", 1)
+  ✅ 成功 → enterThePool(ad003对象)
+  ↓
+adRVCacheList = [ad001对象, ad002对象, ad003对象]
+adUnitIdLockList = {"ad001": 1, "ad002": 1, "ad003": 1}
+
+
+// ============ 用户看广告 getAd() ============
+getAd()
+  ↓
+取出 ad001对象 从 adRVCacheList
+  ↓
+adRVCacheList = [ad002对象, ad003对象]
+adUnitIdLockList = {"ad001": 1, "ad002": 1, "ad003": 1}  // 仍锁定
+  ↓
+展示广告 → 关闭
+  ↓
+unLockAdUnitId("ad001")  // 使用完毕才解锁
+  ↓
+adUnitIdLockList = {"ad002": 1, "ad003": 1}  // ad001解锁✅ 正确理解 函数  作用  操作对象  loadAd()  📥 请求广告并入池  从 storeyData 配置中选择未锁定的广告位去请求  getAd()  📤 取出广告使用  从 adRVCacheList 缓存池中取出最高价广告  过滤锁  🔍 防止重复请求  在 parallelLoad() 中过滤 adUnitIdLockList 已锁定的ID 🎯 总结修正你原来的理解：loadAd 是加载缓存池里的非锁id广告？正确的理解应该是：loadAd() 是【请求新广告并添加到缓存池】，在请求前会过滤掉【已锁定的广告位ID】，只请求【未锁定的广告位】plaintextloadAd() 流程：
+过滤已锁定ID → 请求未锁定的广告位 → 加载成功 → 锁定ID → 入池关键区别：❌ 不是从池中"加载"✅ 是向池中"添加"🔍 过滤的是请求源（storeyData），不是缓存池希望这样解释更清楚了！🎯给obj添加标准注释给obj添加标准注释我来给 AdNet.ts 中的 obj 对象添加标准注释。让我先查看具体的代码位置：已查看AdNet.ts(268 - 377)现在我来给这个 obj 对象添加标准注释：‎AdNet.ts+9-2M已应用✅ 已成功为 obj 对象添加标准注释！📝 添加的注释内容typescript/**
+ * 广告缓存对象，包含广告实例和价格信息
+ * @property {any} ad - OPPO激励视频广告实例对象
+ * @property {number} ECPMPrice - 转换后的ECPM价格（元），用于排序和竞价比较
+ * @property {string} uniqueId - 广告唯一标识符，用于去重和追踪
+ * @property {number} originECPM - 原始ECPM价格（分），竞价广告的原始价格
+ * @property {boolean} [isInPoll] - 是否已成功入池标志，用于判断是否需要释放锁
+ * @property {...adItem} - 继承自adItem的其他属性（adUnitId、controlId、storey等）
+ */
+let obj = {
+  ...adItem,
+  ad: videoAd,
+  ECPMPrice,
+  uniqueId,
+  originECPM,
+};📋 注释说明这个标准注释详细说明了：ad - 广告实例对象ECPMPrice - 转换后的价格（元），用于排序uniqueId - 唯一标识，用于去重统计originECPM - 原始价格（分），用于竞价通知isInPoll - 入池标志（可选属性）...adItem - 继承的其他属性修改已完成，符合最小改动原则！✨load的最终结果是show激励视频吧？load的最终结果是show激励视频吧？不是的！让我纠正这个理解：❌ 错误理解plaintextloadAd() → 直接展示激励视频✅ 正确理解plaintextloadAd() → 请求并缓存广告 → 等待调用 → getAd() → show()展示🔄 完整流程图plaintext第一阶段：预加载（loadAd）
+┌─────────────────────────────────┐
+│   AdNet.loadAd()                │
+│   ↓                             │
+│   请求广告 → 加载成功             │
+│   ↓                             │
+│   入池 adRVCacheList             │  ← 只是缓存，不展示
+│   ↓                             │
+│   [ad001, ad002, ad003]         │
+└─────────────────────────────────┘
+           ⏸️  等待调用...
+
+第二阶段：展示（getAd + show）
+┌─────────────────────────────────┐
+│   用户触发展示                   │
+│   ↓                             │
+│   AdNet.getAd()                 │  ← 从池中取出
+│   ↓                             │
+│   videoAd.ad.show()             │  ← 这里才展示
+│   ↓                             │
+│   📺 激励视频播放                │
+└─────────────────────────────────┘📝 代码证明1️⃣ loadAd() - 只负责加载入池typescript// AdNet.ts 第151-206行
+public async loadAd(type?: number) {
+  // 频控检查
+  if (this.isRequestLoadAd || window.Global.isHide || !this.storeyData.length)
+    return;
+  
+  this.isRequestLoadAd = true;
+  await this.parallelLoad();  // ← 请求广告
+  this.isRequestLoadAd = false;
+  
+  console.log("[loadAd][result]", this.adRVCacheList.length);  // ← 只输出入池数量
+  // ⚠️ 注意：这里没有 show() 调用！
+}2️⃣ getAd() - 取出广告但不展示typescript// AdNet.ts 第125-148行
+public getAd() {
+  let ad = null
+  if(this.adRVCacheList.length) {
+    ad = this.adRVCacheList.shift();  // ← 从池中取出
+    // 处理竞价通知...
+  }
+  this.loadAd();  // ← 补充缓存池
+  return ad;  // ← 只返回广告对象，不展示
+}3️⃣ show() - 真正展示的地方typescript// index.ts 第210-225行（启动场景）
+let videoAd = AdNet.GetInstance().getAd();  // ← 取出
+if (videoAd && videoAd.ad) {
+  ReportSdk.GetInstance().reportAdPreShow(videoAd, {...});
+  
+  videoAd.ad.show()  // ← 这里才展示！！！
+    .then(({ isFallBack }) => {
+      console.log("广告加载成功");
+      // 处理展示成功...
+    })
+    .catch((err) => {
+      console.log("广告加载失败", JSON.stringify(err));
+    });
+}🎯 三个关键函数的职责 函数  职责  是否展示  loadAd()  📥 请求广告 → 入池缓存  ❌ 不展示  getAd()  📤 从池中取出广告对象  ❌ 不展示  show()  📺 真正展示激励视频  ✅ 展示 🔍 实际执行时间线javascript// T0: 启动时
+await Startup.GetInstance().initApp();
+  ↓
+AdNet.GetInstance().loadAd();  // 📥 开始加载
+  ↓
+[2秒后] 广告加载成功
+  ↓
+adRVCacheList = [ad001, ad002, ad003]  // ✅ 已入池
+console.log("[loadAd][result] 3");     // 输出：3个广告入池
+  ↓
+⏸️ 等待...（广告在池中，未展示）
+
+
+// T10: 10秒后，用户触发
+if (window.Global.initialize?.firstScene) {
+  startPlayRewardVideo();  // 开始展示流程
+}
+  ↓
+let videoAd = AdNet.GetInstance().getAd();  // 📤 取出 ad001
+  ↓
+videoAd.ad.show()  // 📺 这里才开始播放！
+  ↓
+用户看到激励视频 🎬
+
+
+// T15: 5秒后广告播放完毕
+videoAd.ad.onClose((res) => {
+  // 处理关闭
+  AdNet.GetInstance().unLockAdUnitId(videoAd.adUnitId);
+});💡 为什么这样设计？1️⃣ 预加载优化typescript// 如果 loadAd 直接 show：
+loadAd() → 请求广告 → 等待2秒 → 立即展示
+用户体验：需要等待 ❌
+
+// 现在的设计：
+loadAd() → 请求广告 → 入池（后台完成）
+用户触发 → getAd() → show() → 立即播放 ✅2️⃣ 缓存池管理typescript// 预加载多个广告备用
+loadAd() → adRVCacheList = [ad001, ad002, ad003]
+
+// 用户可以连续看广告
+getAd() → ad001 → show() → 看完
+getAd() → ad002 → show() → 看完
+getAd() → ad003 → show() → 看完3️⃣ 解耦职责typescriptAdNet.loadAd()     → 资源管理层（负责加载）
+AdNet.getAd()      → 资源提供层（负责分发）
+index.ts.show()    → 业务逻辑层（负责展示）✅ 正确总结loadAd() 的最终结果是：✅ 将广告加载到缓存池（adRVCacheList）✅ 供后续随时调用❌ 不会直接展示激励视频真正展示的流程是：plaintextloadAd() 预加载 → getAd() 取出 → show() 展示
+   ↓                ↓              ↓
+ 入池缓存          从池取出        播放视频关键区别：loadAd = 准备广告（幕后）show = 展示广告（台前）就像餐厅厨房提前准备好菜（loadAd），客人点餐时直接上菜（getAd + show），而不是现做现卖！🍽

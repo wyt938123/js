@@ -1,0 +1,263 @@
+​Startup.ts 99-115​ 这个有什么作用？Clarifying snippet purposeClarifying snippet purposeThe user is asking about the purpose of a snippet. I need more context to understand its role. Maybe other functions use getHapKeysValue, which could give insight. I’ll use the tools available to read more of Startup.ts to gather the necessary details. This should help me provide a thorough response, drawing on whatever relevant connections I can find in the code.我先通读一下 Startup.ts 的上下文，看看这个函数是如何被调用的，再解释它的具体作用。已查看Startup.ts(1 - 260)这段函数的核心作用：把各种“奇怪形式”的 query 参数值，整理成一个干净的一般字符串，方便后面拼接上报用。结合后面代码来看，它主要在这里被用到：tsfor (let [key, value] of Object.entries(window.Global.startConfig?.query)) {
+  if (!addExtKeysArray.includes(key)) {
+    try {
+      globalUnIdstr += `${key}=${getHapKeysValue(value)}&&`;
+    } catch (error) {}
+  }
+  ...
+  if (!hapDataExcludeArray.includes(key)) {
+    ...
+    headerHapData[key] = `${getHapKeysValue(value)}`;
+  }
+}也就是说：所有进来的 query 参数，在拼接 globalUnIdstr 和 headerHapData 之前，都会先经过 getHapKeysValue 做一层“清洗与标准化”。具体逻辑分三种情况：值本身是数组（例如某些框架把同名参数收集成数组）tsif (Object.prototype.toString.call(value) == "[object Array]") {
+  return value[0].replace(/^['"]/, "").replace(/['"]$/, "");
+}- 只取数组的第一个元素 value[0]去掉该元素开头和结尾的单引号或双引号 
+比如："'abc'" → "abc"，'"abc"' → "abc"值是字符串，但里面带有 [（一般是“数组字符串”的形式）ts} else if (value.includes("[")) {
+  let resultVal = value.split(",")[0];
+  return resultVal
+    .replace("[", "")
+    .replace(/^['"]/, "")
+    .replace(/['"]$/, "");
+}典型场景： URL 里传的是：query=["abc","def"] 或 [abc,def]代码会：先按逗号切分，只取第一个："[\"abc\"" 或 "[abc"去掉开头的 [，再去掉两端的引号 
+最后得到一个干净的 "abc"。普通字符串ts} else {
+  return value.replace(/^['"]/, "").replace(/['"]$/, "");
+}- 仅仅是把字符串开头和结尾的一个单引号或双引号去掉。比如："'123'" → "123"，'"xyz"' → "xyz"异常兜底ts} catch (err) {
+  return value;
+}- 如果在处理过程中报错，就直接原样返回，不影响主流程。总结一下：这个函数就是一个 “参数值标准化工具”：兼容 数组 / 数组字符串 / 普通字符串 三种形式；永远只取第一个值来用；去掉多余的 [、]、包裹引号等杂质；目的是让后面上报时的 key=value 字符串和 JSON 里的值 格式统一、易用、不乱。如果你想，我可以帮你把这个函数改得更健壮一点（比如先判断 typeof value === 'string' 再 .includes("[")，避免某些非字符串类型报错）。​Util.ts 8-17​ 有没有更好的方法？​Util.ts 8-17​ 有没有更好的方法？这段实现本身是“常规写法”，如果只是生成一般业务用的随机 ID（不涉及安全/防攻击），其实是可以用的。但如果你问“有没有更好”，一般有两类改进方向：1. 让随机性更可靠（用加密级随机数）Math.random() 不是加密安全的随机数源，碰到以下情况就不太合适：做风控相关的 token、签名用的 nonce需要全局唯一、高强度不可预测的 ID在浏览器/大部分现代运行环境里，可以用 Web Crypto API：tsexport function generateRandomString(length: number) {
+  const charset = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  const randomValues = new Uint32Array(length);
+  // Web Crypto 的加密级随机数
+  crypto.getRandomValues(randomValues);
+
+  let result = "";
+  for (let i = 0; i < length; i++) {
+    result += charset[randomValues[i] % charset.length];
+  }
+  return result;
+}优点：随机性和不可预测性比 Math.random() 高很多更适合做安全相关的 ID / nonce参考文档（Web Crypto 与随机数）：MDN：Crypto.getRandomValues() 
+https://developer.mozilla.org/en-US/docs/Web/API/Crypto/getRandomValuesMDN：Math.random()（说明其非加密安全） 
+https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Math/random注意：你这个 SDK 运行在 OPPO 小游戏环境（window.qg）中，是否支持 crypto.getRandomValues 要实际跑一下 / console 打印确认一下。如果不支持，就只能继续使用 Math.random() 或引入第三方库（但这个项目目前看倾向于轻量、无额外依赖）。2. 保持现在逻辑，只做小优化如果不追求加密安全，只想让代码更简洁一点，你现在的实现已经是 O(length) 的最简单写法，没啥性能问题。可以做的一些微调：把 charset.length 缓存到局部变量（极小优化）用 const/let 分明（你已经做了）如果经常生成固定长度（比如 16/32），可以封装一些语义清晰的 helper，例如 generateSessionId() 调用 generateRandomString(32)，对业务更可读。例如只做一点点整理：tsexport function generateRandomString(length: number) {
+  const charset = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  const charsetLength = charset.length;
+  let result = "";
+
+  for (let i = 0; i < length; i++) {
+    const randomIndex = Math.floor(Math.random() * charsetLength);
+    result += charset[randomIndex];
+  }
+
+  return result;
+}小结如果只是业务 ID / 上报用 traceId：现在这版基本已经够用了，最多做一点代码整理。如果要更“专业/稳妥”：优先考虑用 crypto.getRandomValues，前提是 OPPO 小游戏环境支持 Web Crypto；否则可以考虑用已经引入的库（比如如果项目哪天引入了 uuid 之类的）专门生成 ID。如果你告诉我这个随机串具体用在 SDK 哪个流程（比如 init 上报的 sessionId、还是用户可见的码），我可以帮你一起评估是否有必要切到“安全随机”版本。​Startup.ts 132-132​ 存在大量localStorage操作的原因是什么，是为了下次进入项目时不会拿到上次的数据？为什么要上次的数据呢？​Startup.ts 132-132​ 存在大量localStorage操作的原因是什么，是为了下次进入项目时不会拿到上次的数据？为什么要上次的数据呢？我先在整个 Startup.ts 里查一下这些 localStorage 字段（todaystcount、first_lid、first_qid、diff_times）在别处是怎么用的，再结合业务解释它们为什么需要“保留上次的数据”。已探索1检索已检索代码todaystcount|first_lid|first_qid|diff_times0 个结果Preparing documentation and explanationInvestigating tool issuesI'm seeing that the tool claims there are 0 matches, but from what I've read before, there should be some. It might be a grep regex issue, especially concerning the path format. I need to clarify my pattern; perhaps using "*/Startup.ts" or "**/Startup.ts" would help. However, it seems we don't need to retry since we've already seen the necessary data.The user's question relates to initial(), which is connected to many localStorage operations. Here's the rundown: initial() is triggered in initApp right after initData, using window.qg.getEnterOptionsSync. The localStorage keys involve todaystcount, which keeps track of startup counts per day. It reads the previous value, increments as necessary, and resets each new day for analytics and frequency control.Clarifying data handling in initAppIn initApp, they read todaystcount again, which might be used in other modules outside of this scope.The first_lid stores the first link_id from the query and isn't overwritten on subsequent launches. This helps track the original source of the app install, even when later entries come from different channels—this is useful for attribution and segmentation.The diff_times stores both prevStartId and currentStartId, updating with each launch. This allows initApp to compute the difference between start timestamps for retention analytics.So, the frequent use of localStorage is essential for persistent user metrics like daily launch counts and retention tracking, which means they indeed want to keep previous data for determining user status.Preparing documentation and explanationI need to include links to authoritative external documentation for technical explanations, as the user prefers. I'll reference MDN's localStorage documentation and possibly something on analytics and retention.I want to explain the initial() function, focusing on localStorage keys and logic. To address the question about whether data persists, I'll clarify that localStorage does retain previous values, with todaystcount being the only value that resets with a new date. I'll include the MDN link to learn more about localStorage and maybe a Google Analytics page as well.核心结论先说一下： 
+initial() 里那一堆 localStorage 操作不是为了避免拿到上次的数据，恰恰相反，是为了刻意保留“历史数据”和“第一次进入时的数据”，方便做统计与归因。下面按几个字段拆开讲：1. todaystcount：每天启动次数统计相关代码（你之前看到的）：tslet todaystcount = localStorage.getItem("todaystcount");
+let today = getFormatDate();
+if (!todaystcount) {
+  localStorage.setItem("todaystcount", JSON.stringify({ [today]: "1" }));
+} else {
+  let obj = JSON.parse(todaystcount);
+  let storeData = {};
+  if (!obj[today]) {
+    storeData = { [today]: "1" };
+  } else {
+    storeData = { [today]: +obj[today] + 1 };
+  }
+  localStorage.setItem("todaystcount", JSON.stringify(storeData));
+}作用：用一个对象 { [日期字符串]: 当天启动次数 } 存在 todaystcount 里每次启动时，如果是同一天，就在原基础上 +1如果换了一天，就从 1 开始重新记为什么要“上次的数据”：需要知道今天第几次启动，或者一天内启动频率，用于：频控（比如某些弹窗/广告一天只在前 N 次启动出现）用户活跃度统计（DAU、平均启动次数）这里保留“上次数据”是为了累加统计，而不是清空。参考：本地持久化存储 localStorage 的说明 
+MDN – Window.localStorage 
+https://developer.mozilla.org/en-US/docs/Web/API/Window/localStorage2. first_lid / first_qid：记录“第一次投放来源”tslet first_lid = localStorage.getItem("first_lid");
+if (!first_lid) {
+  localStorage.setItem("first_lid", config.query.link_id || "-1");
+}
+
+let first_qid = localStorage.getItem("first_qid");
+if (!first_qid) {
+  localStorage.setItem("first_qid", config.query.channel_id || "-1");
+}特点：只在 localStorage 里没这个键时写入一次之后再启动，即使入口的 link_id / channel_id 变了，也不会覆盖这其实是典型的归因字段设计：link_id、channel_id 通常表示“投放链接 ID / 渠道 ID”first_lid、first_qid 记录的是设备在这个游戏上“第一次”来源于哪个渠道 
+（例如：这是通过某个广告位、某个媒体第一次拉来的用户）为什么要“上次的数据”：因为从营销/数据分析角度，更关心用户最初来源，而不是后来从什么地方再次打开：计费/结算：给哪个渠道算“拉新”用户分群：新用户是 A 渠道来的还是 B 渠道来的如果每次启动都覆盖，那就丢失了“初始来源”的信息，无法做正确归因3. diff_times：计算“时间差（天数）”用于留存分析tslet diff_times = localStorage.getItem("diff_times");
+if (diff_times) {
+  localStorage.setItem(
+    "diff_times",
+    JSON.stringify([JSON.parse(diff_times)[1], window.Global.StartId])
+  );
+} else {
+  localStorage.setItem(
+    "diff_times",
+    JSON.stringify([window.Global.StartId, window.Global.StartId])
+  );
+}后面在 initApp() 中：tslet diff_times = localStorage.getItem("diff_times");
+let haptimesection = 0;
+if (diff_times) {
+  diff_times = JSON.parse(diff_times);
+  haptimesection =
+    ((new Date(diff_times[1]).getTime() / (1000 * 3600 * 24)) | 0) -
+    ((new Date(diff_times[0]).getTime() / (1000 * 3600 * 24)) | 0);
+}含义：diff_times 存的是一个长度为 2 的数组：第一次存：[StartId, StartId]后续每次：[上一次的第二个值, 当前 StartId]haptimesection = diff_times[1] 与 diff_times[0] 相差的天数 用途：这是典型的留存/回访相关指标，比如：用户隔了几天又回来当前启动属于“第几天留存”如果每次都不用上次的数据，就没法算这个“时间差”，只能知道“今天启动”，但不知道“距离上次/首次启动有多久”。回答你问的两个问题“存在大量 localStorage 操作的原因是什么？”因为这个 SDK 本身是埋点 / 数据统计 / 启动初始化模块，它需要：记住“跨多次启动”的状态（第一次来源、之前启动时间）统计“每天启动次数”、“间隔天数”等指标这些信息必须跨本次会话保存，所以使用 localStorage 来持久化。“是为了下次进入项目时不会拿到上次的数据？为什么要上次的数据呢？”不是为了“避免拿到上次的数据”，而是为了刻意保留并利用“上次/第一次的数据”。“上次的数据”用来：累积启动次数（todaystcount）保存首次渠道/链接（first_lid、first_qid）计算时间差/留存（diff_times → haptimesection）如果你想更精细地控制这些行为（比如“清掉历史数据从零开始测试”），也可以在 SDK 外层提供一个“重置用户数据”的按钮/调试入口，手动清理这些 localStorage 键，我可以帮你设计一个统一的 reset 函数。​Startup.ts 771-861​ 我可以如何获取这段请求的数据？除了在控制台获取，可以如何在网络上拦截获取？​Startup.ts 771-861​ 我可以如何获取这段请求的数据？除了在控制台获取，可以如何在网络上拦截获取？我先看一下 Request 这个封装是基于什么（fetch / XMLHttpRequest / 小游戏 API），再结合代码给你几种可行的“拦截/抓包”方式。已查看Request.ts先说结论： 
+这段请求本质上是用 原生 XMLHttpRequest 发 POST 到 https://adnet4-go.muchcloud.com/adNet/getV3，你可以从两条线来“拿到数据”：在代码里拦截/复用（SDK 内部或宿主项目内） 在网络层抓包（比如 Charles / Fiddler / 浏览器 DevTools）下面分开说，并给你一些权威文档链接方便对照。一、在代码层“获取 / 拦截”这次请求的响应1. 直接在调用点拿数据你这段代码：tsreturn new Promise((resolve, reject) => {
+  let xhr = new Request({ ... });
+  xhr
+    .request({
+      uri: `/adNet/getV3`,
+      method: "post",
+      data: JSON.stringify({ feature_key: "adReqFeatureV5180" }),
+    })
+    .then((res) => {
+      console.log("[adNetConfig]", typeof res, JSON.stringify(res));
+      if (typeof res === "string") {
+        res = JSON.parse(res);
+      }
+      if (res.STATUS == 2000) {
+        try {
+          res = decrypt(res.DATA);
+          ...
+          window.setGlobalData({
+            adConfigV3: res,
+            adSpeciality: json,
+          });
+          ...
+        } catch (e) { ... }
+      }
+    });
+});这里 .then((res) => { ... }) 里面的 res 就是原始响应文本（在解密前是 { STATUS, DATA } 结构），你当前已经在 console.log 里打印了。如果你想在应用逻辑里重用这份数据，可以做：ts// 1. 在 then 里再抛给外层
+return xhr
+  .request({ ... })
+  .then((res) => {
+    if (typeof res === "string") {
+      res = JSON.parse(res);
+    }
+    if (res.STATUS == 2000) {
+      const decrypted = decrypt(res.DATA);
+      // 暴露出去
+      window.setGlobalData({
+        adConfigV3: decrypted,
+        adSpeciality: json,
+        // 比如增加一个字段方便 debug
+        __rawAdNetConfig: res,        // 原始加密响应
+        __decryptedAdNetConfig: decrypted, // 解密后的完整结构
+      });
+      return decrypted;  // 关键：把解密结果 return 出去
+    }
+    throw new Error("invalid STATUS");
+  });这样：initApp 或其他调用方可以 await 这个 Promise，直接拿到解密后的对象。你在控制台上也可以通过 window.Global.adConfigV3 / window.Global.__decryptedAdNetConfig 再次查看。Promise / then 的用法可以参考： 
+MDN – Using Promises 
+https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Using_promises 2. 给 Request 做“全局拦截”既然所有接口请求都走 Request.request()，你可以像 axios 那样，自己加一层“拦截器”：有两种思路：思路 A：在 Request.request 里统一打钩Request.ts 代码里，最后 resolve(xhr.responseText) 的地方：tsif (xhr.status >= 200 && xhr.status < 300) {
+  const text = xhr.responseText;
+  // 在这里统一拦截
+  try {
+    const url = this.baseURL + param.uri;
+    if (url.includes("/adNet/getV3")) {
+      // 这里可以把数据抛到全局
+      window.__lastAdNetResponse__ = text;
+    }
+  } catch (e) {}
+  resolve(text);
+} else {
+  ...
+}这样，你就可以在控制台里直接访问：jswindow.__lastAdNetResponse__或者在业务代码里使用。XMLHttpRequest 的基本行为可参考： 
+MDN – XMLHttpRequest 
+https://developer.mozilla.org/en-US/docs/Web/API/XMLHttpRequest 思路 B：外层“装饰” Request如果不想动 SDK 源码，可以在宿主项目里写一个 wrapper，例如：tsconst rawRequest = Request.prototype.request;
+
+Request.prototype.request = function (param: any) {
+  const url = this.baseURL + param.uri;
+  return rawRequest.call(this, param).then((res: any) => {
+    if (url.includes("/adNet/getV3")) {
+      window.__lastAdNetResponse__ = res;
+    }
+    return res;
+  });
+};这相当于给所有 Request 实例加了一个“之后拦截”的逻辑不需要改现有每个请求调用点二、在网络层“拦截 / 抓包”你这里是通过 XMLHttpRequest 请求一个 HTTPS 域名：tsbaseURL: isDev
+  ? "http://test.adnet4.go.yunxiacn.com"
+  : "https://adnet4-go.muchcloud.com",
+...
+uri: `/adNet/getV3`,
+method: "post",1. 如果运行在浏览器（H5 调试）可以直接用 浏览器 DevTools 的 Network 面板：打开 F12 → Network → 过滤关键词 getV3 或域名 adnet4-go.muchcloud.com点击对应请求，能看到：Request Headers / Response HeadersRequest Payload（这里是 {"feature_key":"adReqFeatureV5180"}）Response（加密前的 JSON）参考： 
+Chrome DevTools – Network panel 
+https://developer.chrome.com/docs/devtools/network 2. 如果运行在 OPPO 小游戏 / 真机环境这里就需要用抓包代理工具，常见的是：Charles：图形化、支持 HTTPS 
+https://www.charlesproxy.com/Fiddler Classic / Fiddler Everywhere 
+https://www.telerik.com/fiddler典型流程（以 Charles 为例）：在你的电脑上安装 Charles。将手机或模拟器的网络代理指向你电脑的 IP 和 Charles 监听端口（默认 8888）。按 Charles 官方文档，在手机上安装 Charles 的根证书并信任（用来解密 HTTPS）。启动小游戏 / H5，发起请求。在 Charles 窗口中按 host 过滤 adnet4-go.muchcloud.com，即可看到完整请求和响应。参考文档： 
+Charles 官方 HTTPS 抓包配置 
+https://www.charlesproxy.com/documentation/using-charles/ssl-proxying/ 注意点：如果运行环境限制自定义代理或证书（有些小游戏容器会限制），抓包可能需要在接近底层的网络环境去做（例如在路由器上做透明代理），这个就比较重了。你当前项目用的是原生 XMLHttpRequest，没有强制证书固定（pinning），所以一般 HTTPS 抓包是可行的。三、小结：你可以怎么做代码内拿数据（推荐）在 .then((res) => ...) 里增加 window.setGlobalData({ __decryptedAdNetConfig: decrypted })，既方便调试，也方便业务复用。或在 Request.request 内统一拦截 /adNet/getV3 的响应，挂到 window.__lastAdNetResponse__。网络层抓包H5 调试：直接用浏览器 Network 面板。真机 / 小游戏：配置 Charles / Fiddler 代理 + HTTPS 解密，过滤 adnet4-go.muchcloud.com/adNet/getV3。如果你说一下现在主要是在 浏览器里调试 还是 OPPO 真机环境里面调试，我可以给你写一个“最少改动的方案”（比如给你一小段装饰 Request 的代码，直接复制到当前项目就能开始抓这类接口的响应）。diff_times的作用是什么？diff_times的作用是什么？Explaining diff_times purposeClarifying diff_times purposeI need to explain what diff_times is, so I want to keep it concise and in Chinese. It's for calculating the days' difference between two timestamps, often tied to user lifecycle and retention metrics. I'll also mention its relevance in A/B testing and frequency control since the user seems interested in analytics. While they appreciate external documentation, this is a conceptual question mainly about internal variables, and a small link on retention metrics could be helpful but isn't essential.Explaining diff_times purposeI need to clarify that diff_times is stored in localStorage as an array containing [prevStartId, currentStartId]. These timestamps help compute haptimesection, which measures the days between the two dates. It plays a role in the initApp process and is used for segmenting in the adnet service for various purposes, including A/B testing, frequency control, and retention analysis. I should verify its usage in the Startup snippet, particularly around line 771, where I can confirm it appears.diff_times 是用来记录两次启动时间，并据此计算“相隔多少天”的中间变量。结合代码来看：在 initial() 里写入 diff_times：tslet diff_times = localStorage.getItem("diff_times");
+if (diff_times) {
+  localStorage.setItem(
+    "diff_times",
+    JSON.stringify([JSON.parse(diff_times)[1], window.Global.StartId])
+  );
+} else {
+  localStorage.setItem(
+    "diff_times",
+    JSON.stringify([window.Global.StartId, window.Global.StartId])
+  );
+}第一次进入：保存 [StartId, StartId]之后每次进入：保存为 [上一次的第二个值, 本次 StartId] 
+→ 也就是“上一次启动时间”和“本次启动时间”两个值。在 initApp() 里读取并计算 haptimesection：tslet diff_times = localStorage.getItem("diff_times");
+let haptimesection = 0;
+if (diff_times) {
+  diff_times = JSON.parse(diff_times);
+  haptimesection =
+    ((new Date(diff_times[1]).getTime() / (1000 * 3600 * 24)) | 0) -
+    ((new Date(diff_times[0]).getTime() / (1000 * 3600 * 24)) | 0);
+}把 diff_times[0]、diff_times[1] 转成“天”的整数，再做差得到的是：本次启动与上一次启动相差的天数（0 天、1 天、2 天……）这个天数会作为请求头 haptimesection 发给广告配置接口（你之前看到的 771–861 行）：tsheader: {
+  ...
+  haptimesection: haptimesection,
+  ...
+}综合起来：diff_times 本身是用来在本地跨启动保存“上一次/本次启动时间”；真正对外使用的是从它算出来的 haptimesection，给后端做：用户回访/留存分层（第 1 天、第 3 天、第 7 天用户）广告、活动策略按“隔了几天回来”做差异配置（比如 N 天未回流用户给不同广告策略）所以答案可以概括为一句话： 
+diff_times = 存两次启动时间，方便计算“启动时间间隔（天数）”，再通过 haptimesection 传给广告/AB 配置服务做用户分层与策略控制。Charles 是绝对安全的吧Charles 是绝对安全的吧不能说“绝对安全”，只能说在正确使用前提下，风险可控、业界常用。关键点有几个：Charles 工作原理就是“中间人解密 HTTPS” 你在设备上安装并信任 Charles 的根证书后，所有走代理的 HTTPS 请求都会被 Charles 解密。 这意味着：请求和响应的明文（账号、密码、Token、业务数据）都能在 Charles 里看到。 所以它本质上是一个“合法的中间人攻击（MITM）工具”，工具本身没问题，关键在于你怎么用。风险来源主要在“环境和操作” 如果： 你的电脑被别人远程控制 / 中了木马； 你把 Charles 代理端口暴露到不可信网络； 你在连着 Charles 代理时登录了自己的生产账号、网银、敏感后台…… 那么这些流量都有可能被记录下来（无论是被 Charles 本机日志、还是系统里的恶意软件）。相对安全的使用姿势建议 
+一般建议你这样做，把风险降到可接受水平： 只在开发/调试环境用，不在日常上网时一直开着代理 调完就关代理（手机/模拟器上把 Wi‑Fi 的代理改回“无”）。 只抓你关心的域名 在 Charles 里配置 SSL Proxying，只对特定 host（例如 adnet4-go.muchcloud.com）解密，别对所有 * 都开。 调试完删除/取消信任 Charles 证书（尤其是真机上） iOS / Android 上都可以手动移除已安装的根证书。 调试期间避免登录敏感服务 比如网银、公司后台、个人主要账号，尽量不要在“开着 Charles 代理”的网络下登录。 保证调试机器本身是干净的 定期查杀病毒，不轻易给别人远程桌面权限。工具本身的信誉 Charles 是老牌的 HTTP(S) 抓包工具，在开发圈使用非常广泛。 但“广泛使用” ≠ “绝对安全”，任何安装根证书+解密 HTTPS 的工具，本质上都需要你信任它的行为 + 管理好自己的环境。可以参考这些官方/权威资料了解它具体怎么做 HTTPS 解密及风险：Charles 官方文档：SSL Proxying 
+https://www.charlesproxy.com/documentation/using-charles/ssl-proxying/ OWASP 对 HTTPS 中间人代理的说明（英文） 
+https://owasp.org/www-community/attacks/Man-in-the-middle 如果你愿意，可以告诉我你现在的使用场景（只抓 SDK 的广告接口？是否在真机上装证书？），我可以帮你列一份“最小必要配置”，尽量在满足调试需要的前提下，把安全风险压到最低。terserterserExplaining terser in contextExplaining terser in contextThe user simply mentioned "terser," and I think they want to know what it is, especially in relation to Rollup configuration. I should provide a concise explanation in Chinese about what the Terser plugin does and how to use it with Rollup. They also prefer technical answers to contain links to authoritative documents. I might want to check the rollup.config.mjs file next to see exactly how Terser is being utilized there.我看下当前 rollup 配置里是否使用了 terser，再结合项目场景解释它。已查看rollup.config.mjs在你这个项目里，“terser”指的是 Rollup 的压缩插件 @rollup/plugin-terser，用来在打包时对 JS 做压缩和混淆。1. terser 是什么terser 本体是一个 JavaScript 压缩/混淆器（uglify 的现代替代品），会：删除无用代码（dead code）合并、折叠常量、简化表达式混淆变量名（mangle）可选地删掉 console、debugger 等@rollup/plugin-terser 是把 terser 集成进 Rollup 的官方插件。官方文档可以看这里：Terser 官方仓库： 
+https://github.com/terser/terserRollup terser 插件文档： 
+https://github.com/rollup/plugins/tree/master/packages/terser2. 你当前配置里 terser 做了什么在 rollup.config.mjs 里：js{
+  file: 'dist/sdk.umd.min.js',
+  format: 'umd',
+  name: 'adServe',
+  sourcemap: true,
+  plugins: [terser(
+    {
+      compress: {
+        // 删除所有的 console 语句
+        drop_console: true,
+        // 删除所有的 debugger 语句
+        drop_debugger: true,
+        // 其他压缩选项
+        pure_funcs: ['console.log', 'console.info', 'console.warn', 'console.error'],
+        // 删除未使用的函数和变量
+        unused: true,
+        // 死代码消除
+        dead_code: true
+      },
+      format: {
+        // 保留注释（可选）
+        comments: false
+      },
+      mangle: {
+        // 混淆变量名
+        toplevel: true
+      }
+    }
+  )]
+}也就是说：sdk.umd.min.js 这个输出：会被压缩、混淆（顶层变量名也被改短）会删掉所有 console.* 和 debugger，以及未使用代码打出 source map，方便你调试而前面的 index.cjs.js / index.esm.js / sdk.umd.js 都是未经过 terser 压缩的版本（便于开发调试）。
+
+
+
+
+
+
+
+我将查看 src/sdk/Startup.ts 的代码，以确认其主要功能是否涉及数据统计上报和初始化。
+已探索
+1文件
+是的，你的理解非常准确。Startup.ts 是整个 SDK 的入口和“大脑”，它的核心职责确实可以概括为以下两点：
+1. 初始化各种信息 (Initialization)
+这部分工作主要由 initData 和几个特定的 get 方法完成：
+设备与环境信息获取：获取设备 ID (deviceId/oaid)、系统信息 (getSystemInfo)、网络类型 (getNetworkType)、地理位置/IP (getIp) 以及小游戏清单信息 (getManifestInfo)。
+配置获取与解析：
+getConfig(): 获取全局业务配置。
+getAbConfig(): 获取 A/B 测试配置，用于功能分流。
+getAdNetConfig(): 获取广告网络配置，并触发广告的预加载 (AdNet.GetInstance().loadAd())。
+状态管理：初始化用户留存相关的标识（如 first_lid 首次链接 ID、todaystcount 今日启动次数等），并存储到 localStorage 中。
+2. 数据统计上报 (Data Reporting)
+这部分主要在 initApp 方法中通过 ReportSdk 实现：
+构建上报基础数据：将收集到的所有设备、渠道、用户信息整合进一个大的 reportData 对象中。
+发送核心事件：
+启动事件 (hap)：上报 SDK 成功启动。
+启动时长 (startup_time)：统计从开始初始化到完成的时间。
+异常监控：如果在获取配置的过程中失败，会通过 ReportSdk 上报错误日志（如“请求配置异常”）。
+总结：
+Startup 类的目的是确保 SDK 在运行前，所有必要的环境参数已就绪、业务配置已拉取，并且第一时间将本次启动的统计数据发送给后端，以便进行后续的归因分析和业务决策。

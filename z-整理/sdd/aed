@@ -1,0 +1,61 @@
+在 game-sdk 项目中，src/sdk/AES.ts 文件主要负责数据的对称加密与解密，特别是针对服务端返回的加密配置或敏感信息进行解析。以下是详细解释：
+1. AES.ts 的核心作用
+该文件的核心功能是提供一个 decrypt 函数，将经过 AES 加密的字符串还原为原始数据（通常是 JSON 对象）。
+配置解析：从代码中的 ext_field_46: '解析配置' 可以推断，它主要用于解密从服务器获取的 SDK 配置文件。
+安全性：通过 AES-128/256-CBC 模式保证传输数据的私密性。
+稳定性：集成了错误上报机制（ReportSdk），一旦解密或 JSON 解析失败，会立即向后台发送异常日志。
+2. 两个关键包的作用与常用方法
+js-base64
+作用：用于 Base64 编码和解码。Base64 是一种将二进制数据转换为 ASCII 字符串的编码方式，常用于在网页或 URL 中传输非 ASCII 字符或二进制数据。
+在本文件中的用途：第 4-5 行使用 encode 函数对密钥 key 和偏移量 iv 的原始字符串进行处理，将其转换为 Base64 格式，以便 CryptoJS 能够正确解析。
+常用方法：
+encode(str): 将字符串编码为 Base64。
+decode(str): 将 Base64 字符串还原为普通字符串。
+isValid(str): 检查字符串是否是合法的 Base64 格式。
+查阅方式：
+NPM 官网: js-base64
+GitHub 源码
+crypto-js
+作用：这是一个纯 JavaScript 实现的加密算法库，支持多种加密标准（AES, SHA, MD5, DES 等）。它是前端开发中最常用的加解密工具。
+在本文件中的用途：执行核心的 AES 解密逻辑，并处理编码格式（如 Utf8, Base64）和加密配置（如 CBC 模式和 Pkcs7 填充）。
+常用方法：
+CryptoJS.AES.encrypt(message, key, cfg): 加密。
+CryptoJS.AES.decrypt(ciphertext, key, cfg): 解密。
+CryptoJS.MD5(message): MD5 哈希。
+CryptoJS.enc.Utf8.parse(str): 将字符串解析为 WordArray 对象（内部处理格式）。
+查阅方式：
+NPM 官网: crypto-js
+Google 归档文档（最详尽，虽然项目已迁移到 GitHub）
+3. 代码逻辑拆解
+typescript
+// 1. 准备密钥和偏移量
+// 将原始字符串编码为 Base64，再由 CryptoJS 解析为内部对象
+const key = CryptoJS.enc.Base64.parse(encode('M%4UoWkgHhQ#iPVn'));
+const iv = CryptoJS.enc.Base64.parse(encode('9apYh^I2^ukRQ!Sd'))
+
+export function decrypt(data: string) {
+  try {
+    // 2. 执行 AES 解密
+    decryptedData = CryptoJS.AES.decrypt(data, key, {
+      iv,                           // 偏移量
+      mode: CryptoJS.mode.CBC,      // CBC 模式（最常用，更安全）
+      padding: CryptoJS.pad.Pkcs7,  // 填充方式
+    }).toString(CryptoJS.enc.Utf8); // 将解密结果转回 Utf8 字符串
+
+    // 3. 尝试将字符串解析为 JSON 对象
+    try {
+      result = JSON.parse(result);
+    } catch (err) {
+      // JSON 解析失败上报
+      ReportSdk.GetInstance().report({ ... });
+    }
+  } catch(err) {
+    // AES 解密失败（如秘钥不对或数据损坏）上报
+    ReportSdk.GetInstance().report({ ... });
+  }
+  return result;
+}
+如何学习和查阅
+官方文档：始终优先查看 NPM 上的 README，它是最新且最准确的入门指南。
+在线调试：如果对加密结果有疑问，可以使用 CyberChef 或其他在线 AES 加密工具，输入相同的 Key 和 IV 进行对比验证。
+源码注释：TypeScript 项目中，你可以直接按住 Ctrl + 左键 点击方法名（如 decrypt），跳转到 index.d.ts 查看参数定义和文档注释。

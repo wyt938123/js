@@ -1,0 +1,455 @@
+以下是为您准备的基于 oppsdk 项目（假设这是一个面向开发者的 Open Platform SDK 项目，常见于提供给第三方接入的工具包）的前端实习生面试回答范本。
+
+这个回答参考了您提供的滴滴实习案例的结构，但根据 SDK 开发的特点进行了定制，强调了兼容性、文档生成、Typescript 类型支持以及如何让其他开发者更好用。
+
+面试回答范本：OPPSDK 前端开发实习
+1. 项目概述
+我在**[公司名称]**进行了为期 X 个月的前端开发实习。期间我主要负责的是内部核心项目 OPPSDK (Open Platform SDK) 的维护与功能迭代。
+
+这是一个面向第三方开发者和内部业务方使用的 SDK 工具包，旨在封装复杂的底层 API 调用，提供统一、易用且类型安全的 JavaScript/TypeScript 接口，帮助开发者快速接入我们的开放平台能力（如登录授权、数据上报、支付能力等）。
+
+2. 技术栈
+由于是 SDK 项目，对包体积、兼容性和类型支持要求很高，主要技术栈为：
+
+开发语言：TypeScript (严格模式，确保 100% 类型推导)
+构建工具：Rollup (用于打包 ESM/CJS/UMD 多种格式)
+测试框架：Jest (单元测试) + Puppeteer (E2E 集成测试)
+文档工具：TypeDoc / VitePress (自动化文档生成)
+代码规范：ESLint + Prettier + Husky (Git Hooks)
+3. 项目职责
+在团队中，我主要承担以下职责：
+
+核心模块开发：负责实现新的 API 方法封装及错误码标准化处理。
+类型定义优化：重构旧的 .d.ts 类型定义，提升开发者使用时的智能提示体验。
+SDK 体积优化：通过 Tree Shaking 和依赖分析，减少 SDK 的打包体积。
+Demo 示例编写：编写 React/Vue/原生 JS 的接入 Demo，帮助开发者快速上手。
+4. 具体工作与技术难点
+难点一：跨环境兼容性与模块化打包
+
+问题：SDK 需要同时运行在浏览器端、Node.js 服务端以及一些 Hybrid App 的 WebView 中。同时也需要支持现代构建工具（Webpack/Vite）的 ESM 导入和老旧通过 <script> 标签引入的 UMD 模式。
+解决方案：
+使用 Rollup 配置多出口打包策略。
+编写各种环境的适配器模式 (Adapter Pattern)，隔离底层环境差异（例如 window.fetch vs node-fetch）。
+配置 package.json 的 exports 字段，实现 Conditional Exports。
+
+
+      useTsconfigDeclarationDir: true 
+    }),
+  ]
+};
+// ...existing code...
+
+
+
+难点二：复杂的异步流程管理与错误处理
+
+问题：SDK 内部涉及大量与后端的异步交互，网络波动可能导致请求失败。之前的代码 try-catch 满天飞，且抛出的 Error 对象格式不统一，接入方很难判断具体错误原因。
+解决方案：
+设计统一的 Error Class，标准化错误码（Code）和错误信息（Message）。
+实现了一个轻量级的拦截器（Interceptor）机制，允许在请求发出前和响应返回后统一处理逻辑（类似于 Axios）。
+实现了指数退避重试机制，提高弱网环境下的成功率。
+
+
+/ ...existing code...
+
+// 统一错误类定义
+export class SDKError extends Error {
+  constructor(public code: number, message: string, public data?: any) {
+    super(message);
+    this.name = 'SDKError';
+  }
+}
+
+// 重试逻辑实现
+async function retryOperation<T>(
+  fn: () => Promise<T>, 
+  retries: number = 3, 
+  delay: number = 1000
+): Promise<T> {
+  try {
+    return await fn();
+  } catch (error) {
+    if (retries <= 0) throw error;
+    
+    // 指数退避: 1s, 2s, 4s...
+    await new Promise(resolve => setTimeout(resolve, delay));
+    return retryOperation(fn, retries - 1, delay * 2);
+  }
+}
+
+// 在请求方法中使用
+export async function sendRequest(url: string, options: any) {
+    return retryOperation(async () => {
+        const response = await fetch(url, options);
+        if (!response.ok) {
+            // 标准化 HTTP 错误
+            throw new SDKError(response.status, response.statusText);
+        }
+        return response.json();
+    });
+}
+// ...existing code...
+
+
+难点三：Typescript 类型推导体验优化
+
+问题：SDK 的配置参数非常多且有多层嵌套，接入方经常填错参数。
+解决方案：利用 TypeScript 的高级类型（泛型、条件类型、Pick/Omit），实现了入参和出参的自动推导。当用户输入不同的 method 时，IDE 能自动提示对应的 params 结构。
+5. 项目成果
+体积优化：通过优化依赖引用的方式（移除 lodash 全量引用，改为具体函数引用），将 SDK gzip 此体积减少了 30% (从 45kb 降至 31kb)。
+稳定性提升：单元测试覆盖率从 40% 提升至 85%，核心链路 bug 反馈率降低了 50%。
+开发体验：完善了 .d.ts 类型定义，接入方的 TS 类型报错显著减少，收到了内部业务团队的好评。
+6. 收获与反思
+技术收获：深刻理解了 npm 包的生命周期、模块化标准（CommonJS vs ESM）的区别，以及如何编写高质量的 TypeScript 类型定义。
+架构思维：学会了从“库开发者”的角度思考问题，API 的设计不仅要能用，还要好用（DX - 开发者体验）。
+反思：在早期的版本迭代中，对 Break Changes（破坏性更新）的管理不够严谨，导致过一次版本升级兼容性问题。后期引入了 Semantic Versioning (语义化版本控制) 和 Changelog 自动化生成流程，解决了这个问题。
+
+
+
+
+
+##  实习生
+
+基于您提供的 AdNet.ts 源码，这份代码包含了很多复杂的异步控制、竞价逻辑、缓存策略。作为实习生，虽然不会去设计整个单例模式或 Rollup 打包配置，但完全可以负责具体的逻辑完善、边界情况处理和数据上报。
+
+以下是结合当前代码文件量身定制的面试回答，非常务实且能体现你读懂了核心源码。
+
+面试回答范本：基于 AdNet.ts 的实战经历
+1. 项目职责
+我在团队中主要参与了 OPPO 小游戏 SDK (AdNet) 核心广告加载模块的维护。这个模块负责管理激励视频广告的全生命周期，包括预加载、入池缓存、竞价排序和最终展示。我主要负责解决广告加载过程中的竞态问题处理、超时优化以及竞价数据上报的逻辑完善。
+
+2. 具体工作与技术难点
+难点一：解决广告重复请求的“竞态问题” (Locking Mechanism)
+
+背景：在 parallelLoad（并行加载）逻辑中，我们配置了多个层级的广告位。如果在网络波动时，上一次对某个 adUnitId（广告位ID）的请求还没返回，业务逻辑又触发了新一轮加载，会导致同一广告位重复请求，浪费底层资源且可能导致逻辑报错。
+解决方案：
+我在 AdNet 类中维护了一个 adUnitIdLockList (Map结构)。
+在发起 loadRewardedVideoAd 请求前，先检查该 ID 是否在 Map 中。
+如果没被锁，执行 this.adUnitIdLockList.set(adUnitId, 1) 加锁。
+核心贡献：我重点完善了解锁机制（unLockAdUnitId）。无论请求是成功、失败还是超时（Promise.race），我都确保在 finally 阶段或者 Promise 链的末端将锁移除，防止因异常导致该广告位永久“死锁”无法再次请求。
+
+// 结合代码的讲解示例
+// 我负责维护这部分逻辑，确保 enterThePool 入池后或者报错后，必须解锁
+// 源码对应位置：AdNet.ts loadRewardedVideoAd 方法
+if (!((res && res?.isInPoll) || false)) {
+    this.unLockAdUnitId(adUnitId); // 只有确保处理完逻辑后才释放锁
+}
+
+
+难点二：实现请求超时控制与降级策略 (Promise.race)
+
+背景：底层广告接口对应的网络环境不稳定，有时 videoAd.load() 会一直 pending 不返回，导致整个串行加载队列（serialLoad）卡死，无法请求下一个备选广告。
+解决方案：
+我参与实现了基于 Promise.race 的超时控制机制。
+将广告加载 Promise 与一个 setTimeout 的 Promise 进行竞争。
+如果超过配置时间（adResqGaptime），强制返回超时状态码（代码中的 1777 错误码）。
+数据上报：我在超时逻辑中增加了 ReportSdk.timeoutHaveAd 上报，帮助团队分析超时对填充率的影响。
+
+
+// 源码对应位置：AdNet.ts loadRewardedVideoAd 方法
+Promise.race([
+  new Promise((resolve) => { /* 实际广告请求 */ }),
+  new Promise((resolve) => {
+    // 实习生工作：实现这个超时计时器，防止队列阻塞
+    timer = setTimeout(() => {
+      timeout = true; 
+      resolve(0); // 返回特殊标记 0 配合后续处理
+    }, +(window.Global.adSpeciality?.adResqGaptime || 0));
+  }),
+])
+
+
+难点三：竞价（Bidding）结果的排序与胜败通知
+
+背景：我们的广告策略引入了实时的 ECPM（每千次展示收益）竞价。加载下来的广告不能直接展示，而是要放入缓存池比价。
+解决方案：
+解析价格：底层返回的 ECPMPrice 可能是分，也可能是特定格式的字符串。我负责编写了价格解析逻辑（padStart处理），将其统一转换为浮点数。
+排序入池：在 enterThePool 方法中，利用 sort 函数对 adRVCacheList 进行重排序，确保价高者排在前面（b.price - a.price）。
+胜败通知：在广告出池（getAd）时，判断如果是竞价广告（price_type == 7），需要调用 notifyAdRankWin 通知底层“我们选了你”；对于未被选中的广告，在销毁前调用 notifyAdRankLoss，完善了 Bidding 协议的闭环。
+
+// 源码对应位置：AdNet.ts getAd 方法
+// 实习生工作：确保取出的广告如果是竞价类型，必须通知底层赢利，否则影响后续权重
+if (ad.price_type == 7) {
+  ad.ad.notifyAdRankWin({
+    lossPrice: Math.abs(+ad.originECPM - 1)
+  })
+}
+
+
+3. 实习收获
+防御性编程：在处理 res.ECPM.ECPMPrice 解析时，学会了处理各种异常格式（如字符串截取、补零），防止因后端字段变更导致 JS 报错。
+资源管理：深刻理解了对象的生命周期。比如在广告加载失败或竞价失败时，必须显式调用 adObj.ad.destroy() 销毁实例，否则在低端机型上会造成严重的内存泄漏。
+代码规范：学会了如何在复杂的异步链式调用中进行打点（Reporting），不影响主流程运行。
+这个回答的优势：
+有凭有据：你提到的 adUnitIdLockList、Promise.race、notifyAdRankWin 都是代码里真实存在的，面试官如果看代码会觉得你真的做了事。
+避重就轻：你没说你设计了“预加载广告池”这个复杂的架构，而是说你维护了其中的“超时处理”和“锁机制”，这非常符合实习生的能力范围（修bug、优化细节）。
+体现业务价值：提到了竞价（为了赚钱）和内存释放（为了性能），这比单纯说“我写了两个函数”要高大上得多。
+
+
+
+
+
+
+
+
+ ## 参考上面的内容讲一下我负责的模块，使用的技术栈以及遇到的挑战和解决方案
+  我是一名前端实习生，注意是实习生，针对这个gamesdk
+
+你好！GitHub Copilot 正在使用 Gemini 3 Pro (Preview) 模型。
+
+基于你提供的项目结构（game-sdk）以及你作为前端实习生的角色，我参照你提供的电商模板，为你撰写了一份针对该 Game SDK 项目的实习经历总结。
+
+这份总结侧重于 SDK 开发特有的底层逻辑、体积控制和安全性，与通常的业务页面开发有所不同。
+
+实习经历概述
+职位：前端开发实习生（Game SDK方向）
+项目：OPP Game SDK 开发与维护
+主要职责：负责游戏 SDK 的核心功能模块维护、数据上报链路优化以及安全性增强工作。在导师指导下，参与了 SDK 的构建优化和 TypeScript 重构。
+
+负责模块
+1. SDK 初始化与生命周期管理
+职责描述：维护 SDK 的启动流程，确保 SDK 在游戏加载前正确初始化，并处理全局配置。
+对应文件：src/sdk/Startup.ts, src/index.ts
+工作内容：
+实现单例模式，保证 SDK 全局唯一实例。
+优化启动参数校验逻辑。
+对外暴露统一的 API 入口。
+2. 数据上报与网络请求封装
+职责描述：负责游戏内打点数据的收集与上报，确保数据传输的稳定性和安全性。
+对应文件：src/sdk/ReportSdk.ts, src/sdk/Request.ts
+工作内容：
+封装基础 HTTP 请求类，统一处理超时和错误。
+实现埋点数据的队列管理与批量上报。
+对接后端 AdNet 广告网络接口（src/sdk/AdNet.ts）。
+3. 安全与混淆机制
+职责描述：参与 SDK 的安全防护建设，防止通信数据泄露和代码反编译。
+对应文件：src/sdk/AES.ts, src/frontend-obfuscation.js
+工作内容：
+实现通信数据的 AES 加密。
+配置构建时的代码混淆规则。
+技术栈
+核心语言：TypeScript（强类型约束，提升 SDK 稳定性）
+构建工具：Rollup（rollup.config.mjs，比 Webpack 更适合库/SDK 的打包，产物更干净）
+设计模式：Singleton（单例）、AOP（面向切面编程，src/sdk/Aop.ts）
+主要库：CryptoJS (AES加密)、Fetch/XHR API
+规范工具：ESLint、Prettier
+遇到的挑战与解决方案
+挑战一：无侵入式的功能扩展（AOP）
+问题描述：需要监控游戏内的特定行为或在特定 API 调用前后插入日志/上报逻辑，但不能直接修改游戏业务代码，也不能让 SDK 深度耦合业务。
+
+分析与定位：
+直接修改原函数会导致代码难以维护。通过观察 src/sdk/Aop.ts，我们需要一种拦截机制，动态地在函数执行前后“切入”逻辑。
+
+解决方案：
+实现面向切面编程（AOP）工具类：
+利用 JavaScript 的高阶函数特性，封装 before 和 after 方法，实现对目标函数的无感拦截。
+
+// src/sdk/Aop.ts 示例逻辑
+export class Aop {
+  static injectBefore(target: any, methodName: string, advice: Function) {
+    const original = target[methodName];
+    target[methodName] = function (...args: any[]) {
+      advice.apply(this, args); // 执行前置逻辑
+      return original.apply(this, args); // 执行原逻辑
+    };
+  }
+
+  static injectAfter(target: any, methodName: string, advice: Function) {
+    const original = target[methodName];
+    target[methodName] = function (...args: any[]) {
+      const result = original.apply(this, args);
+      advice.apply(this, args); // 执行后置逻辑
+      return result;
+    };
+  }
+}
+
+
+效果评估：
+成功实现了对游戏关键行为的监控，且不需要游戏开发者修改原有逻辑，降低了接入成本。
+
+挑战二：SDK 数据传输安全与反作弊
+问题描述：游戏数据（如分数、广告奖励）在传输过程中容易被抓包篡改，且 SDK 源码如果暴露逻辑，容易被编写外挂。
+
+分析与定位：
+
+传输层：明文传输 HTTP 请求极不安全。
+代码层：源码中的变量名如果具备语义，容易被逆向分析。
+解决方案：
+
+通信加密（AES）：
+在 src/sdk/AES.ts 中封装加密方法，在 Request.ts 发送请求前对 Payload 进行加密。
+
+// src/sdk/AES.ts 简化示例
+import CryptoJS from 'crypto-js';
+
+export class AESCipher {
+    private static key = CryptoJS.enc.Utf8.parse('YOUR_SECRET_KEY');
+    
+    // 加密方法
+    static encrypt(data: object): string {
+        const jsonStr = JSON.stringify(data);
+        const encrypted = CryptoJS.AES.encrypt(jsonStr, this.key, {
+            mode: CryptoJS.mode.ECB,
+            padding: CryptoJS.pad.Pkcs7
+        });
+        return encrypted.toString();
+    }
+}
+
+// 在 Request.ts 中使用
+// data = AESCipher.encrypt(originalData);
+
+构建混淆：
+利用 src/frontend-obfuscation.js 和 Rollup 插件，在打包阶段对代码进行深度混淆（变量重命名、控制流扁平化）。
+效果评估：
+抓包工具无法直接读取业务数据，增加了破解成本。
+
+挑战三：SDK 体积控制与构建优化
+问题描述：SDK 需要嵌入到游戏中，对包体积极其敏感。引入过多依赖会导致 SDK 体积膨胀，影响游戏首屏加载。
+
+分析与定位：
+检查 package.json 和 rollup.config.mjs，发现构建配置需要精细化管理，去除无用代码（Tree Shaking）。
+
+解决方案：
+Rollup 配置优化：
+使用 Rollup 进行打包，因为它在处理 ES Module 和 Tree Shaking 方面优于 Webpack。
+
+/ rollup.config.mjs 优化示例
+import typescript from '@rollup/plugin-typescript';
+import terser from '@rollup/plugin-terser'; // 压缩
+
+export default {
+  input: 'src/index.ts',
+  output: [
+    {
+      file: 'dist/game-sdk.js',
+      format: 'umd', // 兼容多种模块规范
+      name: 'GameSDK',
+      sourcemap: false // 生产环境关闭 sourcemap 减小体积
+    }
+  ],
+  plugins: [
+    typescript(),
+    terser({ 
+      compress: {
+        drop_console: true, // 移除 console.log
+        pure_funcs: ['console.info'] 
+      }
+    })
+  ]
+};
+
+效果评估：
+SDK 压缩后体积减少了约 30%，且移除了生产环境的调试日志。
+
+实习收获与成长
+从业务开发转向 SDK 思维：不同于写写 UI 组件，开发 SDK 让我更关注代码的健壮性（不能报错导致游戏崩溃）、兼容性和API 设计。
+深入 TypeScript：在重构现有 JS 代码到 TS 的过程中（tsconfig.json 配置），深刻理解了泛型、接口和类型断言在大型项目中的价值。
+工程化能力：作为一个实习生，我学会了如何配置 Rollup，如何编写自定义的混淆脚本（frontend-obfuscation.js），这填补了我以前只会在脚手架里写代码的空白。
+
+
+
+
+
+
+
+
+
+
+
+好的，基于你提供的 AdNet.ts（广告核心调度网络）和 Aop.ts（面向切面的生命周期管理）源码，我为你重新梳理了一份侧重于广告策略、异步并发控制和收益优化的实习经历描述。
+
+这份描述会比通用的前端开发更“硬核”，凸显你处理复杂逻辑和**商业变现（Monetization）**的能力。
+
+实习经历概述
+职位：前端开发实习生（游戏商业化 SDK 方向）
+核心职责：负责 Game SDK 中最核心的广告调度系统（AdNet）维护，以及基于游戏生命周期的自动化策略（AOP）实现。重点解决了广告填充率、ECPM 收益优化以及高并发下的资源竞争问题。
+
+负责模块与技术细节
+1. 广告调度网络（AdNet）
+职责描述：维护 AdNet.ts 核心类，实现广告的预加载、缓存池管理及竞价分发。
+关键技术：
+加权缓存池策略：维护 adRVCacheList（激励视频缓存池）。不同于简单的先进先出，实现了基于 ECPM（每千次展示费用） 的优先级队列。在 loadAd 时预取广告，在 getAd 时优先返回高价值广告。
+并发控制：利用 Promise.all (parallelLoad) 和 async/await (serialLoad) 实现广告位的并行请求与串行回退策略，最大限度利用网络带宽提高填充率。
+竞价逻辑：处理 notifyAdRankWin（竞价胜出）和 notifyAdRankLoss（竞价失败）的上报逻辑，确保广告平台的数据归因准确。
+2. 生命周期切面管理（AOP）
+职责描述：通过 Aop.ts 拦截小游戏生命周期，实现“切后台自动预加载”和“切前台自动展示”的策略。
+关键技术：
+版本兼容策略：针对不同平台版本（Code 1170 分界线）实现差异化逻辑——低版本直接从通用池取广告，高版本维护独立的 rewardVideoAdIns 队列，从 createMultipleVideoAd 批量创建广告实例。
+全局状态管理：通过 window.Global 和 window.setGlobalData 同步广告展示状态（isShowRV、isHide），防止因为用户频繁切换前后台导致的逻辑死锁。
+遇到的挑战与解决方案
+Challenge 1: 高并发下的广告位资源竞争与去重
+问题描述：
+在游戏启动或网络波动时，loadAd 可能会被频繁触发。由于广告位 ID 是有限的资源，重复对同一个 ID 发起请求会导致平台报错或资源浪费。
+
+分析与定位：
+查看日志发现大量“广告实例创建失败”错误。分析 AdNet.ts 发现，多个异步操作可能同时读取到同一个空闲广告位配置。
+
+解决方案：
+实现乐观锁机制（Locking Map）。
+在 AdNet.ts 中引入 adUnitIdLockList（Map结构）。
+
+加锁：在发起 window.qg.createRewardedVideoAd 请求前，立即执行 this.adUnitIdLockList.set(adUnitId, 1)。
+并发过滤：在 preloadAd 和 parallelLoad 遍历配置时，直接过滤掉 lockUId.has(el.adUnitId) 的项目。
+解锁：无论请求成功（onLoad）、失败（onError）还是超时，都在 finally 阶段（或对应的回调中）执行 unLockAdUnitId，确保死锁不会发生。
+
+
+// 代码逻辑映射
+// 1. 过滤已锁定的ID
+let queue = (window.Global.adSeriesData || []).filter(
+  (el) => !lockUId.has(el.adUnitId)
+);
+// 2. 请求前加锁
+lockUId.set(r.adUnitId, 1);
+// 3. 结束后解锁
+rewardVideoAdIns.push(json); // 成功入池
+lockUId.delete(r.adUnitId);  // 解锁
+
+
+Challenge 2: 提升广告填充率与收益最大化（ECPM Sorting）
+问题描述：
+简单的轮询展示会导致高价值广告（高 ECPM）可能排在后面被展示，甚至过期未被展示，直接影响业务收入。同时，如果只串行请求，加载速度太慢，用户点击时可能广告还没准备好。
+
+分析与定位：
+需要将“请求”和“展示”解耦。请求阶段追求“快和多”，展示阶段追求“贵”。
+
+解决方案：
+
+并行预加载：在 AdNet.ts 的 parallelLoad 方法中，将广告位配置按楼层（Storey）分组，利用 Promise.all 并发请求多个广告位，大幅缩短填充池子的时间。
+动态竞价排序：
+在广告加载成功的回调中（onLoad），解析平台返回的 res.ECPM.ECPMPrice。
+将广告对象推入缓存池后，立即执行快排逻辑：rewardVideoAdIns.sort((a, b) => b.originECPM - a.originECPM)。
+结果：保证了 getAd() 或者 playVad() 永远取出的是当前池子里最贵的那条广告。
+Challenge 3: 复杂场景下的超时与容错处理
+问题描述：
+部分用户的网络环境极差，导致 createRewardedVideoAd 既不回调 onLoad 也不回调 onError，导致 Promise 一直 Pending，卡住后续的广告请求队列。
+
+分析与定位：
+AdNet.ts 中的 loadRewardedVideoAd 需要一个竞态机制来打破僵局。
+
+解决方案：
+Promise.race 超时熔断。
+利用 Promise.race 将广告请求 Promise 与一个定时器 Promise（setTimeout）进行竞争。
+
+配置超时时间 window.Global.adSpeciality?.adResqGaptime。
+如果超时发生，记录超时日志 ReportSdk.timeoutHaveAd，并强制释放当前的广告位锁，保证后续请求能继续进行，避免队列堵塞。
+
+
+// AdNet.ts 中的实现逻辑
+Promise.race([
+  new Promise((resolve) => { /* 实际广告请求 */ }),
+  new Promise((resolve) => {
+    timer = setTimeout(() => {
+      timeout = true; // 标记超时
+      resolve(0);     // 熔断返回
+    }, gapTime);
+  })
+])
+
+
+面试官可能问到的延伸问题（基于已读代码）：
+Q: 为什么 AOP 里针对版本号 1170 做了两套逻辑？
+A: 实习期间了解到，OPPO/VIVO 平台在 1170 版本后对广告接口或生命周期策略有重大调整（可能是预加载限制或 API 变更）。低版本我们复用 AdNet 的通用池，高版本为了更好的收益效果，我们维护了独立的 rewardVideoAdIns 池并在切回来（onShow）时优先展示。
+Q: 你们的单例模式(Singleton)是怎么写的？
+A: 在 AdNet 类里通过 private static instance 和 public static GetInstance() 实现，确保全局只有一个广告管理器，防止多个管理器同时操作广告位导致冲突。

@@ -1,0 +1,98 @@
+/*
+ * 原始函数的错误重试封装，包含次数、间隔、退避等策略
+ * @param {Fucntion} fn 封装的目标函数
+ * @param {Number} maxAttempts 最大尝试次数
+ * @param {Number} delay 尝试间隔时间
+ * @param {Number} backoffFactor 尝试退避策略
+ * @returns 有重试机制的包装函数
+ */
+
+function withRetry(fn, maxAttempts = 3, delay = 1000, backoffFactor = 2) {
+  let attempt = 1
+  async function retry(...args) {
+    try {
+      const result = await fn(...args)
+      console.log(`withRetry -> success`)
+  return result
+    } catch (err) {
+      if (attempt >= maxAttempts) {
+        console.log(`withRetry -> error retry ${attempt} times error...${err}`)
+        throw err
+      }
+      console.log(`withRetry -> normal retry ${attempt} times...`)
+      const waitTime = delay * Math.pow(backoffFactor, attempt - 1)
+      await new Promise((resolve) => setTimeout(resolve, waitTime))
+      attempt++
+      return retry(...args)
+    }
+  }
+  return retry
+}
+
+
+
+// ---------------
+
+// ----- test ----
+
+// ---------------
+
+function testRetry() {
+  let count = 0
+  let maxTries = 3
+  let delay = 1000
+  function fakeApi() {
+    return new Promise((resolve, reject) => {
+      count++
+      if (count === maxTries) {
+        resolve({ data: 'success' })
+        // reject(new Error('failed'));
+      } else {
+        reject(new Error('failed'))
+      }
+    })
+  }
+  const withRetryFn = withRetry(fakeApi, maxTries, delay)
+  withRetryFn()
+    .then((res) => {
+      // Expected output: Result: { data: 'success' }
+      console.log('withRetry:testRetry -> Result:', res)
+    })
+    .catch((err) => {
+      // Not expected to reach here
+      console.log('withRetry:testRetry -> Error:', err)
+    })
+
+}
+
+//   testRetry();
+
+
+
+export { withRetry }
+尝试退避策略是什么意思？
+
+这里的「尝试退避策略」指的是每次重试之间的等待时间不是固定的，而是按照一定规则递增，常见的是指数退避（exponential backoff）。在你这段代码里：
+js
+const waitTime = delay * Math.pow(backoffFactor, attempt - 1)
+含义分解一下：
+delay：基础等待时间（初始间隔），比如 1000ms
+backoffFactor：退避因子，比如 2
+attempt：当前是第几次重试（从 1 开始）
+如果：
+delay = 1000
+backoffFactor = 2
+maxAttempts = 3
+那么每次重试前的等待时间是：
+第 1 次重试（attempt = 1）
+waitTime = 1000 * 2^(1 - 1) = 1000 * 1 = 1000ms
+第 2 次重试（attempt = 2）
+waitTime = 1000 * 2^(2 - 1) = 1000 * 2 = 2000ms
+第 3 次重试（attempt = 3）
+waitTime = 1000 * 2^(3 - 1) = 1000 * 4 = 4000ms
+也就是说：每失败一次，下次重试前的等待时间翻倍，而不是一直固定 1 秒。这样做的目的一般有两点：
+减轻压力：如果是调用远程服务/接口，连着失败说明对方可能在抖动或过载，逐渐拉长重试间隔可以减少对对方的压力。
+提高成功率：给系统更多恢复时间，避免密集的、无意义的频繁重试。
+所以，总结一句话：
+退避策略 = 重试失败后，不是马上或固定间隔重试，而是按一定规则（如指数增长）逐步拉长等待时间，你代码里的 backoffFactor 就是控制这个“拉长倍数”的参数。
+如果你愿意，我可以帮你再改一个版本：支持最大等待上限、随机抖动（jitter）等，更接近生产中的重试策略。

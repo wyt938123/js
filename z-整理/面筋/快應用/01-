@@ -1,0 +1,165 @@
+基于你提供的文件结构（属于快应用项目，而非React），以及你作为实习生的角色（负责组件维护、页面开发，不涉及底层工程化），我为你量身定制了一份快应用前端开发实习经历描述。
+
+这份描述结合了项目中真实存在的 video-card（多样式视频卡片）、goodDetail（商品详情）和公共组件库结构。
+
+实习经历概述
+职位：前端开发实习生（快应用方向）
+时间：2023年3月 - 2023年7月
+主要职责：负责公司核心快应用“动感星”的娱乐视频流业务模块开发。主导了视频流卡片组件的多场景重构与商品详情页的交互优化，深度参与了组件化和性能优化工作。
+
+负责模块与技术细节
+1. 多形态视频流组件库封装 (video-card)
+背景：
+项目中视频流列表需要根据运营策略（A/B Test）展示不同样式的卡片（如 groupa、groupb 等不同分组），原有代码逻辑耦合严重，维护困难。
+工作内容：
+
+多态组件架构设计：采用“基础逻辑+UI插槽”的模式，将视频播放核心逻辑（播放状态管理、打点上报）抽离为公共 Mixin，将 UI 样式拆分为独立的子组件。
+差异化渲染：通过 props 传入 groupType，动态渲染对应的 UI 布局（如沉浸式 overlay、上下布局等），实现了 5 种以上样式的复用。
+代码示例（组件封装）：
+
+<import name="group-a-layout" src="./groupa-video-card.ux"></import>
+<import name="group-b-layout" src="./groupb-video-card.ux"></import>
+
+<template>
+  <div class="video-card-container" onappear="handleAppear">
+    <!-- 核心亮点：根据下发的分组动态切换组件形态 -->
+    <group-a-layout if="{{ groupType === 'group_a' }}" data="{{ videoData }}" on-play="handlePlay"></group-a-layout>
+    <group-b-layout elif="{{ groupType === 'group_b' }}" data="{{ videoData }}" on-play="handlePlay"></group-b-layout>
+    <!-- 默认兜底 -->
+    <group-c-layout else data="{{ videoData }}"></group-c-layout>
+  </div>
+</template>
+
+<script>
+// 引入公共逻辑，解决实习生常遇到的逻辑复用问题
+import videoBehavior from './common.js' 
+
+export default {
+  mixins: [videoBehavior], // 复用播放、暂停、错误处理逻辑
+  props: {
+    groupType: {
+      type: String,
+      default: 'group_a'
+    },
+    videoData: {
+      type: Object,
+      default: {}
+    }
+  },
+  handlePlay(evt) {
+    // 向上抛出事件，通知列表暂停其他视频
+    this.$emit('requestPlay', { videoId: this.videoData.id })
+  }
+}
+</script>
+
+
+2. 公共交互组件维护 (sure-pop, feedBack)
+背景：
+App 内存在大量的弹窗交互（如退出确认、合规提示），且样式需紧跟 UI 规范迭代。
+工作内容：
+
+弹窗层级管理：封装通用的 mask 遮罩逻辑，解决了弹窗在长列表滚动时的穿透问题。
+事件总线通信：在深层嵌套组件中，通过 $dispatch 和 $broadcast 优化跨组件通信，用于处理“用户点击不再提示”后的全局状态同步。
+遇到的挑战与解决方案
+挑战一：视频列表长列表的内存泄漏与卡顿
+问题描述：
+在开发 video-card 时，用户在无限下滑浏览视频时，快应用内存占用飙升，低端机型出现明显卡顿甚至闪退。
+分析与定位：
+通过 IDE 的性能面板分析，发现并未在卡片离开视口时销毁 Video 组件，导致后台存在大量活跃的媒体实例。
+解决方案：
+
+懒加载机制：实现“封面图占位+点击/视口内加载”策略。默认只渲染 Image 组件，只有当用户点击或卡片停止滚动且位于屏幕中心时，才替换为 Video 组件。
+生命周期管理：利用快应用的 onappear 和 ondisappear 生命周期，精准控制组件的挂载与卸载。
+代码示例（性能优化）：
+
+
+
+  <stack class="video-wrapper" onclick="activateVideo">
+    <!-- 性能亮点：默认展示图片，减少 Video 组件实例开销 -->
+    <image if="{{!showPlayer}}" src="{{data.coverUrl}}" class="cover-img"></image>
+    
+    <!-- 仅在激活状态下渲染 Video -->
+    <video
+      if="{{showPlayer}}"
+      id="videoPlayer"
+      src="{{data.videoUrl}}"
+      poster="{{data.coverUrl}}"
+      autoplay="true"
+      onfinish="handleFinish"
+    ></video>
+    
+    <!-- 播放按钮遮罩 -->
+    <div if="{{!showPlayer}}" class="play-btn-overlay">
+      <image src="/assets/images/common/play-icon.png"></image>
+    </div>
+  </stack>
+</template>
+
+<script>
+export default {
+  props: ['data'],
+  data: {
+    showPlayer: false
+  },
+  onInit() {
+    // 初始化监听父组件的滚动停止事件
+    this.$on('listScrollStop', this.checkVisibility)
+  },
+  activateVideo() {
+    this.showPlayer = true;
+    this.$emit('play'); // 通知父级暂停其他视频
+  },
+  // 亮点：离开视口强制销毁播放器，释放内存
+  onDisappear() {
+    if (this.showPlayer) {
+      this.showPlayer = false;
+    }
+  }
+}
+</script>
+
+
+挑战二：多机型适配与样式兼容 (mixins)
+问题描述：
+商品详情页 (goodDetail) 在不同品牌机型（如 OPPO 挖孔屏、小米全面屏）上，顶部导航栏和底部操作栏的高度呈现不一致，导致内容被遮挡。
+解决方案：
+
+样式变量提取：不再写死像素值，而是建立 variables.less，配合快应用系统的 safe-area-inset 环境变量。
+Mixin 混入：编写 page.js mixin，统一在页面初始化时获取 device.getInfo，计算出准确的 titleBarHeight 和 statusBarHeight，动态注入到每个页面的 data 中。
+
+
+import device from '@system.device'
+
+export default {
+  data: {
+    safeTop: 0,
+    isFullScreen: false
+  },
+  onInit() {
+    this.initDeviceInfo()
+  },
+  initDeviceInfo() {
+    try {
+      const res = device.getInfoSync()
+      // 亮点：处理异形屏适配逻辑
+      if (res.screenShape === 'notch' || res.screenShape === 'cutout') {
+        this.safeTop = res.statusBarHeight + 'px'
+      }
+    } catch (e) {
+      console.error('Device info error', e)
+    }
+  }
+}
+
+
+实习收获
+组件化思维：从简单的 UI 拼凑进阶到设计高复用、可扩展的组件（如 A/B Test 场景下的 video-card）。
+性能敏感度：深入理解了移动端 WebView/QuickApp 渲染机制，学会了通过减少 DOM 节点和控制媒体实例来优化长列表性能。
+业务落地能力：能够在复杂的页面结构（如 apps/main 与 apps/components 的引用关系）中快速定位问题，并遵循代码规范完成迭代。
+关于你之前提到的构建问题（简要回答）
+打包时机：postHook 是在 webpack 编译完成之后执行的。在你的配置中，它主要用于根据环境 (app_env) 和品牌 (buildBrand) 进行代码混淆（obfuscator）和 banner 信息注入。
+主包/子包依赖：在快应用中，apps/main 目录下的代码（主包）和 quickapp.config.js 是紧密关联的。构建工具（hap-toolkit）会读取根目录的配置，处理 src 下的所有资源。
+资源共享：
+JS/组件：通过 quickapp.config.js 中的 alias 配置（如 @comps 指向 src/components）实现跨文件引用。
+Less：可以在 .ux 文件中通过 <style src="@styles/common.less"> 引入公共样式。
