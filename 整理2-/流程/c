@@ -1,0 +1,101 @@
+在这个 vest-kiaa-oppo 项目中，你正在处理一个典型的快应用（QuickApp）马甲包（Vest）工程。
+
+这个架构的核心目的是：使用一套核心代码（Main），通过通过脚本配置，生成多个不同包名、不同UI、不同配置的快应用（子包/马甲包）。
+
+以下是该项目的详细执行流程、分包逻辑和构建体系分析：
+
+1. 核心架构逻辑 (Main vs Sub)
+该项目并不是标准的“主包+分包（Subpackage）”加载模式，而是基于源代码构建时的“复制与覆盖”模式。
+
+Main (核心逻辑):
+位于 src/ (在根目录下) 和 apps/main/。
+包含通用的业务逻辑、页面路由、核心 SDK（如 Adnet）、工具类等。这是所有马甲包共用的“骨架”。
+Sub/Vests (马甲包/皮肤):
+位于 apps/entmt/ (娱乐类) 或 apps/instrument/ (工具类) 下的具体文件夹（如 funread, joyplay）。
+这些文件夹通常只包含该马甲包特有的差异化文件：
+资源: 特有的图片 (assets/), 样式 (style/)。
+配置: 特有的签名文件 (sign/)。
+元数据: 定义在 apps/pkgInfo.js 或 scripts/pkgInfo.js 中的包名、应用名、版本号。
+2. 执行与构建流程
+构建一个特定的马甲包通常分为两个阶段：预处理 (FE-Build) 和 编译 (Hap Build)。
+
+第一阶段：预处理 (FE-Build)
+这是项目最独特的步骤，由 scripts/packBuild.js 控制。
+
+命令示例:
+
+npm run fe-build entmt funread -- --env=dev --brand=oppo
+
+
+entmt: App分类（对应 apps/entmt）。
+funread: 具体马甲包名称（对应 apps/entmt/funread）。
+脚本执行逻辑 (scripts/packBuild.js):
+
+读取配置:
+从 pkgInfo 中读取目标马甲包的包名 (package)、应用名 (name) 等信息。
+从 scripts/brandConf.js 读取特定厂商（如 OPPO）的构建参数（是否全屏、是否签名等）。
+缓存远程配置 (scripts/cacheFile.js):
+脚本会运行 cacheFile.js，从服务器拉取广告配置 (adnetConfig.json)、AB测试配置、黑名单等，并写入 src/cache/ 目录。
+代码引用: 参见 scripts/cacheFile.js 中的 cacheAdnetConfig。
+文件“组装” (Copy & Overwrite):
+清理: 清理 src/ 下的一些临时文件。
+复制通用代码: 将 apps/common 或 apps/main 的内容同步。
+覆盖马甲资源: 将 apps/entmt/funread/ 下的文件复制到 src/ 中。如果有同名文件（如 logo），马甲包的文件会覆盖通用文件。
+生成 Manifest: 读取模板 (prepare/manifest_entmt.json)，根据入参动态修改 package、name、versionName，然后生成最终的 src/manifest.json。
+复制签名: 根据厂商（brand），将对应的公私钥复制到 sign/ 目录。
+第二阶段：编译打包 (Hap Build)
+预处理完成后，src/ 目录已经变成了“特定马甲包”的完整源码。此时使用快应用标准工具链进行编译。
+
+命令:
+
+npm run build     # 开发构建
+npm run release   # 正式签名构建
+
+
+构建逻辑 (quickapp.config.js):
+
+Webpack 处理:
+使用 hap-toolkit 进行打包。
+自定义 Loader: customeloader.js 会被调用。它非常关键，根据 brand 参数（如 oppo），剔除掉其他厂商（如 huawei, xiaomi）的特定代码块。
+原理: 识别代码注释中的标记，类似 #if app=='huawei'，如果不匹配则删除。
+代码混淆:
+配置中引用了 obfuscatorloader.js 或类似插件，对代码进行混淆保护。
+生成 RPK:
+最终在 dist/ 目录下生成 .rpk 文件，文件名通常包含包名和版本号。
+3. 项目与子包的具体关系
+apps/ 目录: 是马甲包的仓库（Inventory）。这里存放的是“差异”。
+src/ 目录: 是工作区（Workspace）。这是实际被编译的地方。
+packBuild.js: 是搬运工。它负责把“仓库”里的东西搬到“工作区”。
+关系图解:
+
+
+
+[apps/entmt/funread] (特有资源) --+
+                                  |
+[apps/common/pages] (通用页面) ---+--> [scripts/packBuild.js] --> [src/] (最终编译目录)
+                                  |                             ^
+[prepare/manifest_xx.json] -------+                             |
+                                                                |
+[src/helper/sdk] (核心SDK) -------------------------------------+
+
+
+
+4. 运行时流程 (Runtime)
+当快应用在手机上启动时：
+
+启动配置: src/helper/apis/config.js 会根据环境（dev/pre/prod）决定 API 的基地址。
+SDK 初始化:
+src/helper/sdk/adnet/core/index.js 初始化广告网络核心。
+它会尝试读取 构建时缓存 的本地配置 (src/cache/adnetConfig.json)，这由 src/helper/sdk/adnet/service/store-service.js 处理。
+同时，它会发起网络请求更新最新配置。
+AB 测试与分流: 项目中包含 AB Test 逻辑，根据服务端下发的策略（在 cacheFile.js 拉取或运行时拉取）决定展示哪种 UI 或广告策略。
+总结
+这个项目的核心不在于快应用本身的分包（Subpackage）技术，而在于工程化的多包构建系统。
+
+如果你要开发一个新马甲包 newApp：
+
+在 apps/entmt/ 下创建 newApp 文件夹。
+在 apps/pkgInfo.js 中注册它的包名和名称。
+放入它独有的 Logo 和配置。
+运行 npm run fe-build entmt newApp ... 将其作为当前的工作代码。
+运行 npm run build 生成包。

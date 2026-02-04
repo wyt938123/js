@@ -1,0 +1,227 @@
+## 详细介绍一下广告的运行流程，业务
+基于提供的代码文件 (AdLoader.ts, HomeMain.ts, GameMain4.ts)，这是一个基于 Cocos Creator 开发的小游戏（看起来是类似 OPPO/vivo/华为 的快游戏平台，因为使用了 qg API）。
+
+该项目的广告业务流程非常重度，主要依赖于 原生广告（Native Ad） 和 激励视频广告（Reward Video）。
+
+以下是详细的广告运行流程和业务逻辑拆解：
+
+1. 核心广告类型
+从代码中可以看出使用了以下三种主要的广告形式：
+
+原生广告 (Native Ad)：这是代码中最复杂的逻辑。开发者通过代码获取广告数据（图片、标题、描述），手动拼装到 UI 节点上。
+激励视频 (Reward Video)：用于获取游戏内道具或特权。
+Banner / 自定义广告：在主页通过 SDK 调用。
+2. 详细业务流程拆解
+A. 启动页/加载页广告 (AdLoader.ts)
+这是一个专门用于展示广告的“伪加载”或“伪隐私页”场景。它的目的是在进入正式游戏前，通过高曝光率的原生广告获取点击。
+
+场景初始化:
+
+检查是否登录 (isLogin)。
+如果未登录，显示 loginPop。
+如果已登录，检查隐私协议 (SdkCtrl 相关的隐私逻辑)。
+背景轮播: switchBackgroundImage 会随机加载网络图片作为背景，可能为了伪装成不同的应用场景或提高新鲜感。
+原生广告渲染逻辑:
+
+监听全局事件 window.$Evt.$on("adLoaderRenderNativeAd", ...)。
+数据映射: 使用 renderMapping 对象，将广告数据（img, title, source, desc, adid, adbtxt）映射到具体的 UI 组件（LT_ad 左上, RT_ad 右上, LB_ad 左下, RB_ad 右下）。
+多位置展示: 支持同时渲染多个位置的原生广告 (topNativeAd, centerNativeAd, bottomNativeAd, pullNativeAd)。
+交互与上报:
+
+点击上报: clickNativeAd 方法处理点击逻辑，并调用 window.$ReportSdk.report 发送埋点（事件：ad_loader_click）。
+误触/引导: 代码中有 Click_mask，并且在该版本号小于 1115 时会主动激活 Mask，这通常是为了防止误触或引导点击。
+B. 游戏内原生广告 (GameMain4.ts)
+在具体的游戏关卡界面（如 GameMain4），通过原生广告模拟 Banner 或信息流广告。
+
+广告加载 (initAd):
+
+调用 window.$AdNet.loadAd(0) 和 window.$AdNet.loadAd(2) 请求广告。
+通过 window.$AdNet.getAd(2) 获取原生广告对象。
+手动渲染 (loadNativeAd):
+
+数据填充: 将获取到的 nativeAd 数据填充到 ad_img, ad_title, developerName 等 Label 和 Sprite 中。
+合规性展示: 原生广告必须展示“应用详情”、“权限”、“隐私”等按钮（gotoAppDetail, gotoPermissionUrl），这是快游戏平台的合规要求。
+上报: 必须手动调用 nativeAd.ad.reportAdShow 和 nativeAd.ad.reportAdClick 来计费。
+延迟显示:
+
+代码中有一行 setTimeout(() => { this.ad_info.node.active = true; }, 10000)，说明原生广告会在游戏开始 10 秒后才弹出来，以此降低用户干扰或提高误点率。
+C. 激励视频广告 (GameMain4.ts)
+这是标准的“看视频得奖励”逻辑。
+
+触发点:
+
+用户点击 "加时" 按钮 (onClickAddTime)。
+如果道具 (ItemID.Game4AddTime) 数量不足，调用 ShowRewardVideo。
+播放逻辑:
+
+获取广告实例: window.$AdNet.getAd(1) (ID 为 1 通常代表激励视频)。
+生命周期管理:
+onError: 播放失败，提示用户，重新加载广告。
+onClose: 监听关闭事件。
+关键判断: res && res.isEnded。只有视频完整播放结束，才调用 onSuccess() 回调发放奖励。
+如果中途关闭，不发奖励。
+播放成功后，立即请求加载下一次的广告 (window.$AdNet.loadAd(1)), 保证下次点击由于预加载而能秒开。
+D. 主页广告 (HomeMain.ts)
+主页的广告逻辑相对简单，主要托管给 SDK 控制器。
+
+SdkCtrl.getInstance().ShowBanner(): 展示标准 Banner。
+SdkCtrl.getInstance().showCustomAd(): 展示自定义广告（通常也是原生模版广告）。
+SdkCtrl.getInstance().showGameClubButton(): 展示游戏圈/游戏中心按钮。
+3. 技术栈特点总结
+高度依赖全局对象: 代码中大量使用了 window.Global, window.$Evt, window.$AdNet, window.$ReportSdk。这说明该项目外层包裹了一个通用的 SDK 框架，业务逻辑只需调用 API，不需要关心底层如何与平台（如微信、OPPO 广告 SDK）通信。
+手动埋点: 业务层非常关注数据，手动进行了大量的 event_id 上报（如 ad_loader_show, ad_loader_click），用于分析不同广告位的转化率。
+防连点与节流: 在 AdLoader 和 ShowRewardVideo 中都出现了 switchFlag, oldClickFlag 或简单的 flag 变量，配合 setTimeout 来防止用户快速连续点击导致多次触发广告或逻辑错误。
+4. 关键代码片段示例
+原生广告数据填充 (GameMain4.ts):
+
+loadNativeAd(){
+    // ...检查对象...
+    // 必须要上报展示，否则无收益
+    nativeAd.ad.reportAdShow({adId: nativeAd.adId})
+    
+    // 截取标题长度
+    let title = (nativeAd.title || '').substr(0, 11)
+    this.ad_title.string = title.length == 11 ? title + '...' : title;
+    
+    // 加载远程图片
+    this.loadPics();  
+    
+    // 10秒后显示
+    setTimeout(() => {
+        this.ad_info.node.active = true;
+    }, 10000)
+}
+
+激励视频回调处理 (GameMain4.ts):
+
+videoAd.ad.onClose((res) => {
+    // 只有 isEnded 为 true 才是完整播放
+    if (res && res.isEnded || res === undefined) {
+        onSuccess && onSuccess() // 发放奖励
+    } else {
+        console.log('播放没结束，不给予奖励')
+    }
+    // ...销毁并预加载下一个...
+})
+
+## 需要更加详细一些
+
+这是一个非常典型的通过“伪装场景”和“原生广告自渲染”来最大化商业变现的小游戏项目。
+
+为了更详细地剖析业务流程，我们将整个广告链路分为 启动阶段（AdLoader） 和 游戏运行阶段（GameMain & HomeMain），并深入到代码执行的每一行逻辑。
+
+第一阶段：启动与强变现流程 (AdLoader.ts)
+这个脚本的核心目的是在进入游戏主场景前，构建一个高点击率的广告环境。它伪装成一个加载页或功能页，引导用户点击广告。
+
+1. 初始化与环境判断
+代码入口: onLoad()
+全局状态设置:
+window.Global.isLoadScene = true: 标记当前处于加载场景。
+注册事件监听：
+login: 监听登录结果，决定是否显示登录弹窗。
+adLoaderRenderNativeAd: 核心事件，用于接收底层 SDK 传来的原生广告数据并渲染。
+nativeAdStatusChanged: 当底层广告状态变化时，触发背景图切换（增加页面动态感，防止用户视觉疲劳）。
+启动逻辑 (start()):
+开关判断: 检查 window.Global.initialize.ADpageSwitch。
+如果开关关闭（审核模式或低价值用户）：检查登录状态，未登录显示 loginPop，已登录直接进入隐私流程。
+如果开关打开（变现模式，默认）:
+激活 bg 和 normalbg，加载网络背景图。
+switchBackgroundImage(): 开始轮播背景图，伪装成内容页。
+FakeNavigation: 如果开启，显示假的底部导航栏 (bot)，增加真实感。
+2. 原生广告渲染链路 (最核心变现点)
+这是该文件最复杂的逻辑，目的是将非标的原生广告数据（JSON）渲染成 UI 节点。
+
+数据接收:
+
+SDK 层（不可见代码）触发事件 $emit("adLoaderRenderNativeAd", adData)。
+AdLoader 的 renderNativeAd(e) 被调用。
+数据绑定与误触机制:
+
+位置映射: 根据 e.key (如 topNativeAd, centerNativeAd)，从 renderMapping 表中找到对应的 UI 组件（LT_ad, RT_ad 等）。
+强制遮罩（误触核心）:
+代码：if((window.Global.deviceInfo?.platformVersionCode || 0) < 1115 && !this.oldClickFlag){ this.Click_mask.node.active = true }
+业务含义: 如果平台版本较低（规则较松），会开启一个全屏透明或半透明的 Click_mask。用户点屏幕任何地方都会触发点击逻辑。
+UI 渲染:
+
+设置文本：标题、来源、按钮文字等。
+加载图片：调用 loadPics 异步下载远程图片并赋值给 Sprite。
+this[o.box].node.active = true: 显示该广告位。
+点击劫持与上报 (clickNativeAd):
+
+这是挂载在 Click_mask 上的点击事件。
+随机分配点击: let key = arr[Math.floor(arr.length * Math.random())]。
+即使用户点的是屏幕中间，代码可能会随机上报为点击了“顶部广告”或“底部广告”，并触发 $emit('oldNativeAdClick', key) 通知底层 SDK 进行计费跳转。
+防连点: 使用 oldClickFlag 和 setTimeout 暂时禁用遮罩 100ms-1s。
+3. 进入主游戏 (gotoGame)
+触发条件：用户点击了“同意隐私”或者 window.Global.isLeaveAdLoader 变为 true。
+资源预加载: cc.director.preloadScene('Game', ...)。
+清理: 销毁所有广告事件监听，移除节点，跳转 cc.director.loadScene('Game')。
+第二阶段：主页广告业务 (HomeMain.ts)
+进入游戏大厅后，广告策略转为合规展示，主要依赖 SDK 封装的方法。
+
+1. 自动展示逻辑 (ShowUI)
+插屏/弹窗: SdkCtrl.getInstance().showCustomAd()。这通常是一个模版化的原生广告，弹在屏幕中间。
+Banner 广告: SdkCtrl.getInstance().ShowBanner()。在底部展示标准横幅广告。
+签到拦截: 先检查 SignCtrl 是否需要弹签到，如果不需要，才弹广告。
+第三阶段：游戏内深度变现 (GameMain4.ts)
+在具体的玩法界面（如第 4 关），广告通过“原生广告位嵌入”和“激励视频”两种方式存在。
+
+1. 游戏内原生广告 (Banner 替代品)
+由于原生广告收益通常高于标准 Banner，该页面手动实现了一个原生广告位。
+
+加载流程 (initAd):
+
+window.$AdNet.loadAd(0): 可能是请求 Banner 作为备选。
+window.$AdNet.loadAd(2): 请求原生广告数据。
+轮询等待: 使用 setTimeout 循环检查 window.$AdNet.getAd(2) 是否拿到了数据。如果第一次没拿到，1秒后再试一次。
+渲染与延迟 (loadNativeAd):
+
+曝光上报: 必须调用 nativeAd.ad.reportAdShow(...)，否则平台不结算收益。
+字数截断: 标题太长会被截断 substr(0, 11)。
+延迟展示:
+业务含义: 游戏刚开始前 10 秒专注于玩法，10 秒后广告突然弹出。这既符合“不遮挡游戏核心区域”的合规要求，又因为是动态弹出，容易吸引用户视线。
+点击交互 (clickAdImage):
+
+用户点击图片时，调用 nativeAd.ad.reportAdClick(...) 上报点击，并设置 isClickAd = true。
+2. 激励视频 (核心道具产出)
+这是用户主动触发的强需求广告。
+
+触发场景:
+
+点击 onClickAddTime (增加游戏时间)。
+判断道具 ItemID.Game4AddTime 数量。
+如果不足，调用 ShowRewardVideo。
+执行流程 (ShowRewardVideo):
+
+防抖: if(flag) return，防止用户狂点按钮导致同时拉起多个视频。
+获取实例: window.$AdNet.getAd(1)。
+预上报: reportAdPreShow (告诉服务器准备播广告了)。
+监听回调:
+onError: 如果拉取失败，设置全局状态 isShowRV: false，销毁实例，并立即尝试重新加载 (loadAd(1))，确保下次能成。
+onClose:
+判断 res.isEnded。
+成功: 执行回调 onSuccess()，给玩家发道具。
+中途退出: 打印日志，不发奖励。
+埋点:上报 reportAdClick，参数 result 区分是否完整观看。
+核心逻辑: 销毁当前广告实例，并立即预加载下一条 (window.$AdNet.loadAd(1))。
+展示: videoAd.ad.show()。
+总结：数据流向与控制
+整个项目的广告控制权其实在 window.Global, window.$AdNet 和 SdkCtrl 中。
+
+AdLoader (启动页):
+
+策略: 暴力变现。
+手段: 伪装场景 + 全屏误触遮罩 + 随机位置上报。
+目标: 这里是用户流失率最高的地方，也是广告点击率最高的地方（通常用于“洗用户”）。
+HomeMain (大厅):
+
+策略: 品牌曝光。
+手段: 标准 Banner + 插屏。
+目标: 维持界面填充率，不引起反感。
+GameMain (关卡):
+
+策略: 精准变现。
+手段:
+原生广告: 延迟 10s 弹出，干扰性适中，视觉样式可控。
+激励视频: 卡住游戏进程（时间不够），强制用户为了过关而观看。
+逻辑闭环: 这里的 loadAd -> show -> destroy -> loadAd(next) 形成了完美的闭环，确保视频广告永远处于“准备好”的状态。

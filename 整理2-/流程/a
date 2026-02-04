@@ -1,0 +1,224 @@
+解释一下项目的运行流程是什么
+
+
+代码首先将核心模块的单例挂载到 window 对象上，例如 $Startup, $ReportSdk, $AdNet 等，供游戏引擎（如 Cocos, Laya）调用。
+启动函数 $initApp：
+游戏启动时会调用 window.$initApp(cb)。这个函数主要做两件事：
+初始化全局数据对象 window.Global。
+调用 Startup.initApp() 进行核心数据的拉取和配置。
+2. 核心数据与配置加载
+这部分逻辑主要在 src/sdk/Startup.ts 中执行：
+
+环境嗅探 (initData)：
+并行获取设备信息：IP 地址、OAID (设备 ID)、系统信息、Manifest 版本号、网络类型等。
+这些数据被存入 window.Global，作为后续广告策略判断和数据上报的基础。
+拉取服务器配置：
+基础配置 (getConfig)：请求 fruitsoss.yunyihudong.com，获取加密配置并使用 src/sdk/AES.ts 进行解密。
+AB Testing (getAbConfig)：获取实验配置（initialize 对象），决定是否开启“推广链路”（firstScene）或“切后台召回”（recalltimes）。
+广告策略配置 (getAdNetConfig)：请求 Go 服务器获取广告位配置（storeyData）。这里决定了广告缓存池的大小 (ADnumbers)、每日请求上限、竞价底价等参数，并将广告位列表注入到 src/sdk/AdNet.ts 中。
+3. 广告加载系统的运行 (AdNet)
+这是 SDK 最核心的部分，位于 src/sdk/AdNet.ts。它采用 "预加载 + 缓存池" 模式：
+
+触发加载：
+初始化完成或配置下发后，会调用 AdNet.GetInstance().loadAd()。
+并行/串行请求：
+根据配置的广告位层级（storeyData），使用 parallelLoad 并行发起请求。
+内部调用 window.qg.createRewardedVideoAd 创建广告实例。
+竞价与入池：
+广告加载成功 (onLoad) 后，会检查 ECPM 价格。
+如果开启竞价 (price_type == 7)，SDK 会比较返回价格与底价。
+符合条件的广告实例会被存入 adRVCacheList (缓存池)，并按价格排序。即便加载成功，如果池子满了或者策略限制，这个时候不会播放，只是缓存。
+4. 广告展示流程
+当玩家在此游戏中触发看广告逻辑（例如点击“观看视频复活”）时：
+
+调用展示接口：
+游戏调用 src/index.ts 中的 window.$ShowRewardVideo。
+从池中获取 (getAd)：
+调用 AdNet.getAd()，从缓存池 adRVCacheList 中取出价格最高的一个现成广告实例。
+自动补货：
+取出广告后，缓存池变空或减少，AdNet 可能会自动触发 loadAd() 去请求新的广告填补空缺。
+实际播放与回调：
+调用底层 videoAd.show() 播放广告。
+监听 onClose 事件：如果 res.isEnded 为 true，则执行成功回调（发放奖励）；否则视为中途退出。
+同时通过 src/sdk/ReportSdk.ts 上报 ad_show (曝光), ad_click (点击), ad_play_successful (完播) 等埋点。
+5. 生命周期管理 (AOP)
+src/sdk/Aop.ts 负责监听小游戏的系统事件（切前后台）：
+
+切后台 (onHide)：
+上报 "切后台" 事件。
+触发 "召回逻辑" (tryShowPreloadedAd)：如果配置允许（recalltimes > 0），会在用户切后台之前尝试展示一个广告（或在切回来的瞬间，利用系统机制）。这通常用于提高广告变现效率。
+切前台 (onShow)：
+上报 "切前台" 事件。
+重置一些状态标记。
+再次调用 AdNet.loadAd() 确保缓存池中有足够的广告，以备用户下次点击。
+6. 特殊策略：推广链路 (First Scene)
+在 src/index.ts 的初始化最后阶段：
+如果 window.Global.initialize?.firstScene 为 true（通常指买量用户刚进游戏的场景），SDK 会执行更激进的策略：
+
+强制加载：AdNet.loadAd(1)。
+自动播放：调用 startPlayRewardVideo()，尝试不经用户点击直接播放激励视频（这取决于具体的配置和平台规则）。
+总结图示
+
+
+启动游戏
+  │
+  ▼
+index.ts ($initApp)
+  │
+  ├──► Startup.ts (拉取 Config, ABTest, IP, DeviceID)
+  │       │
+  │       ▼
+  ├──► (配置就绪) ──► AdNet.ts (loadAd: 请求广告 -> 竞价 -> 存入 adRVCacheList)
+  │
+  ▼
+生命周期监听 (AOP.ts)
+  │
+  ├──► onShow: 补货广告
+  └──► onHide: 尝试展示召回广告
+  │
+  ▼
+玩家点击按钮
+  │
+  ▼
+$ShowRewardVideo
+  │
+  ├──► AdNet.ts (getAd: 从池中取出一个广告)
+  │
+  ├──► videoAd.show() (播放)
+  │
+  └──► ReportSdk.ts (上报数据)
+
+
+  好的，为了提供更详细的运行流程，我们将从代码执行顺序、数据流向以及关键逻辑判断三个维度，深入剖析这个 SDK 的内部运作机制。
+
+我们将流程划分为 启动初始化阶段、广告加载与竞价阶段、广告展示交互阶段 和 生命周期维护阶段。
+
+第一阶段：启动初始化 (Startup Phase)
+核心目标：构建全局上下文环境，获取服务器配置，决定后续策略。
+
+挂载全局 API (src/index.ts)
+
+脚本加载时，立即执行 index.ts。
+它将 window.Global 初始化为空对象。
+将 $ShowRewardVideo, $ShowBanner, $initApp 等函数挂载到 window 对象，使游戏主逻辑可以随时调用。
+设备指纹采集 (src/sdk/Startup.ts -> initData)
+
+游戏调用 $initApp() 后，SDK 并行调用 OPPO 平台底层 API：
+qg.getSystemInfo(): 获取机型、系统版本、屏幕宽高。
+qg.getNetworkType(): 判断是 WiFi 还是 4G/5G。
+qg.request() (ip-api): 获取外网 IP。
+关键步骤: qg.getOaid(): 获取广告标识符（OAID）。这是广告平台精准投放和计算 eCPM 的核心依据。
+所有数据汇总写入 window.Global，用于后续请求的签名和参数。
+配置链式请求 (src/sdk/Startup.ts)
+这是一个串行的异步过程，任何一步失败可能会导致 SDK 降级运行。
+
+Step 1: 基础 Config (getConfig): 请求 OSS 获取各个后续接口的域名、加密密钥等。响应体经过 AES 解密 (src/sdk/AES.ts)。
+Step 2: AB Test 配置 (getAbConfig): 决定当前用户属于哪个实验组。
+变量: firstScene (是否新手强弹), recalltimes (切后台召回次数)。
+Step 3: 广告策略配置 (getAdNetConfig): 请求 Go 服务端获取 StoreyData（分层配置）。
+数据结构: 一个包含多个广告位 ID (adUnitId) 的数组，每个 ID 附带底价 (floorPrice)、超时时间等参数。
+Step 4: 完成初始化: 调用 AdNet.GetInstance().loadAd() 开始预加载。
+第二阶段：广告加载与竞价 (Ad Loading & Bidding Phase)
+核心目标：维护一个“高价值”的广告缓存池 (adRVCacheList)，确保游戏要播放时不需要等待。
+
+这一步主要在 src/sdk/AdNet.ts 中完成。
+
+触发加载 (loadAd)
+
+每次调用 loadAd，SDK 会检查当前缓存池 adRVCacheList 的长度。
+如果 cacheList.length < window.Global.ADnumbers (配置的池大小，如 3 个)，则继续请求。
+并行分层请求 (parallelLoad)
+
+SDK 遍历服务器下发的 storeyData (广告位列表)。
+对每个广告位 ID 调用 qg.createRewardedVideoAd 创建能够相互独立的广告实例。
+并发控制: 不会傻傻地创建无限个，通常受 parallelCount 控制。
+加载结果处理 (onLoad / onError)
+
+失败 (onError):
+记录错误码（如 1004 无填充）。
+上报 ad_req (请求事件) 但标记为失败。
+如果是超时或网络错误，可能触发简单的指数退避重试。
+成功 (onLoad) - 竞价逻辑:
+SDK 本身不只看是否加载成功，还要看价格。
+获取价格: 某些广告实例会返回 ecpm 字段。
+比价逻辑:
+判断 ad.ecpm >= floorPrice (配置的底价)。
+如果是 price_type === 7 (开启实时竞价模式)，只有高于底价的广告才会被保留。
+入池:
+符合条件的广告实例被 push 进 adRVCacheList。
+如果配置了排序，列表会根据 eCPM 从高到低排序，确保下次取出的广告是最贵的。
+上报: 发送 ad_fil (填充事件)。
+第三阶段：广告展示交互 (Presentation Phase)
+核心目标：响应游戏请求，播放视频，发放奖励，并处理异常。
+
+游戏发起请求
+
+游戏代码调用 window.$ShowRewardVideo(callback)。
+获取最佳广告实例 (AdNet.getAd)
+
+SDK 检查内部状态变量 isPlay，防止重复点击。
+从 adRVCacheList 数组中 pop() (弹出) 一个广告实例。
+若池中有广告: 立即使用，几乎无延迟。
+若池空: 此时会触发“紧急加载”逻辑，现场去请求一个广告（这会导致用户看到 loading 转圈）。
+播放与监听 (videoAd.show())
+
+调用底层 show() 方法。
+SDK 立即上报 ad_show (展示/曝光事件) 和 ad_imp (部分渠道的曝光)。
+挂载事件监听:
+onClose(res): 用户关闭广告时触发。
+如果是 完整观看 (res.isEnded 为 true): 上报 ad_play_successful，并执行游戏传入的 callback(true) 发放奖励。
+如果是 中途关闭 (res.isEnded 为 false): 提示用户“观看完整才能获得奖励”，执行 callback(false)。
+onError(err): 播放过程中出错，执行失败回调。
+自动补货
+
+一旦广告被消耗（无论播放成功与否），SDK 都会再次调用 AdNet.loadAd() 尝试填满缓存池，为下一次展示做准备。
+第四阶段：生命周期与召回 (Lifecycle & Recall Phase)
+核心目标：利用系统事件最大化变现机会（强弹、召回）。
+
+位于 src/sdk/Aop.ts 和 index.ts。
+
+切后台召回 (onHide)
+
+当用户点击 Home 键或由于其他原因导致游戏切后台时，触发 qg.onHide。
+SDK 检查 window.Global.initialize?.recalltimes (剩余召回次数)。
+执行逻辑:
+如果还有次数，SDK 会调用 AdNet 尝试寻找一个已加载好的广告。
+在部分支持的机型/系统版本上，SDK 会尝试在这一瞬间弹出一个视频广告（通常称为“插屏视频”或“强弹”），试图留住用户或在用户离开前最后收割一次曝光。
+切前台检查 (onShow)
+
+用户回到游戏。
+SDK 检查广告是否由“切后台”逻辑触发的。
+如果发现缓存池为空（可能是因为内存回收或被消耗），立即触发 loadAd() 进行补货。
+关键数据结构摘要
+为了帮你理解内存中发生了什么，这里是关键的对象状态：
+
+
+
+
+// window.Global (大致结构)
+{
+    systemInfo: { ... },  // 机型信息
+    oaid: "xxx-xxx",      // 广告ID
+    ip: "1.1.1.1",
+    initialize: {         // AB测试配置
+        firstScene: true, // 是否新手强弹
+        recalltimes: 3    // 切后台允许弹广告的次数
+    },
+    ADnumbers: 3,         // 缓存池最大容量
+    storeyData: [         // 广告瀑布流配置
+        { id: "123", floorPrice: 200, type: "video" },
+        { id: "456", floorPrice: 100, type: "video" }
+    ]
+}
+
+// AdNet 内部状态
+{
+    adRVCacheList: [ ResourceObject, ResourceObject ], // 准备好的广告实例列表
+    loading: false // flag，防止并发请求过多
+}
+
+总结
+这个 SDK 的核心是在普通的广告 API 之上做了一个 “中间层”。它通过预先加载和价格排序解决了两个问题：
+
+用户体验：点按钮立刻看广告，不用等加载。
+收益最大化：如果有多个广告位，优先展示 ECPM 价格高的那个。
